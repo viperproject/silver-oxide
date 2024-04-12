@@ -6,7 +6,7 @@ num = { '0'..'9' }
 integer = @{num+}
 
 // Identifiers
-ident = @{ (char ) ~ (char | num | "'" )* }
+ident = @{ char ~ (char | num | "'" )* }
 
 // Types
 // type ::=
@@ -25,6 +25,7 @@ type = {
        | "Seq" ~ "[" ~ type ~ "]"
        | "Set" ~ "[" ~ type ~ "]"
        | "Multiset" ~ "[" ~ type ~ "]"
+       | "Map"~ "[" ~ type ~","~ type ~ "]"
        | ident ~ ("[" ~ type ~ ("," ~ type)* ~ "]")? // ???? domain type
      }
 kw_Int = @{"Int"~ !ASCII_ALPHANUMERIC }
@@ -186,8 +187,8 @@ exp_atom = {
        | "folding"~acc_exp~"in"~exp
        | "applying"~"("~magic_wand_exp~")"~"in"~exp
        | "packaging"~"("~magic_wand_exp~")"~"in"~exp
-       | "forall"~formal_arg_list_ne~"::"~(trigger~(","~trigger)*)?~exp
-       | "exists"~formal_arg_list_ne~"::"~(trigger~(","~trigger)*)?~exp
+       | "forall"~formal_arg_list_ne~"::"~trigger*~exp
+       | "exists"~formal_arg_list_ne~"::"~trigger*~exp
        | seq_constructor_exp
        | set_constructor_exp
        // | seq_op_exp
@@ -349,8 +350,11 @@ field = { "field"~ident~":"~type~(";"?) }
 //     precondition*
 //     postcondition*
 //   "{" exp "}" // Semicolon not permitted
-function = { function_signature~(precondition)*~(postcondition)*~("{"~exp~"}")? }
+function = { function_signature~(precondition | decreases)*~(postcondition | decreases)*~("{"~exp~"}")? }
 
+decreases = { "decreases"~decrease_exp }
+
+decrease_exp = {"*" | "_" | ( exp~(","~exp)*)? }
 // precondition ::=
 //   "requires" exp
 precondition = { "requires"~exp~";"? }
@@ -379,7 +383,7 @@ formal_args = { "("~(formal_arg~(","~formal_arg)*)?~")" }
 
 // formal-arg ::=
 //   ident ":" type
-formal_arg = { ident~":"~type }
+formal_arg = { ident~":"~type | type }
 
 // formal-returns ::=
 //   "returns" formal-args
@@ -502,7 +506,7 @@ fresh_statement = { "fresh"~ident~(","~ident)* }
 //   "package" magic-wand-exp |
 //   "apply" magic-wand-exp
 wand_statement = { "wand"~ident~":"~exp |
-       "package"~magic_wand_exp~block |
+       "package"~magic_wand_exp~block? |
        "apply"~magic_wand_exp
 }
 
