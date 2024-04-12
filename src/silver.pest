@@ -36,7 +36,7 @@ loc_access = {field_access | predicate_access }
 // acc-exp ::=
 //    "acc" "(" loc-access ["," exp ]")" //access
                                 // default is write
-acc_exp = { "acc"~"("~loc_access~(","~exp)?~")" }
+acc_exp = { "acc"~"("~loc_access~(","~exp)?~")" | predicate_access }
 // trigger ::=
 //   "{" exp^,* "}"  // a trigger for a quantification
 trigger = {
@@ -191,7 +191,14 @@ exp = {exp_atom~postfix*~(binop_plus~exp_atom~postfix*)* }
 // binop_plus = _{ "+" }
 binop_plus = _{ binop | "?"~exp~":" }
 
-postfix = _ { "."~ident }
+postfix = _ {
+       | "."~ident
+       | "[" ~ seq_op ~ "]"
+}
+seq_op = {
+       ".."~exp | exp ~ ((".." | ":=") ~ exp)?
+}
+
 
 single_exp = _{ SOI~exp~EOI }
 // exp = { "true" | "false"
