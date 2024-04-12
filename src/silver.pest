@@ -25,7 +25,7 @@ type = { "Int" | "Bool" | "Perm" | "Ref" | "Rational"
 
 // predicate-access ::=
 //   ident "(" exp^,* ")"         // predicate access
-predicate_access = { ident ~ "(" ~ exp ~ ("," ~ exp)* ~ ")" }
+predicate_access = _{ func_app }
 
 // field-access ::=
 //   exp "." ident |              // field access
@@ -81,8 +81,13 @@ seq_constructor_exp = {
 // forperm-exp ::=
 //     "forperm" "[" ident^,* "]" ident "::" exp
 forperm_exp = {
-       "forperm" ~ "[" ~ ident ~ ("," ~ ident)* ~ "]" ~ ident ~ "::" ~ exp
+       "forperm"~formal_arg_list_ne~"["~loc_access~"]"~"::"~exp
 }
+
+id_ty = _{ formal_arg }
+formal_arg_list_ne = { id_ty~(","~id_ty)* }
+formal_arg_list = { (id_ty~(","~id_ty)*)? }
+
 // let-in-exp ::=
 //     "let" ident "==" "(" exp ")" "in" exp
 let_in_exp = {
@@ -164,17 +169,15 @@ exp_atom = {
       | "epsilon"~!ASCII_ALPHA
       | "wildcard"~!ASCII_ALPHA
       | "perm"~"("~loc_access~")"
-      | acc_exp
       | "("~ident~"("~(exp~(","~exp)*)?~")"~":"~type~")"
       // | field_access
-       | predicate_access
        | "["~exp~","~exp~"]"
-       | "unfolding"~acc_exp~"in"~exp
+       | kw_unfolding~acc_exp~"in"~exp
        | "folding"~acc_exp~"in"~exp
        | "applying"~"("~magic_wand_exp~")"~"in"~exp
        | "packaging"~"("~magic_wand_exp~")"~"in"~exp
-       | "forall"~formal_arg~(","~formal_arg)*~"::"~(trigger~(","~trigger)*)?~exp
-       | "exists"~formal_arg~(","~formal_arg)*~"::"~exp
+       | "forall"~formal_arg_list_ne~"::"~(trigger~(","~trigger)*)?~exp
+       | "exists"~formal_arg_list_ne~"::"~exp
        | seq_constructor_exp
        | set_constructor_exp
        // | seq_op_exp
@@ -182,9 +185,13 @@ exp_atom = {
        | let_in_exp
        | forperm_exp
        | func_app
+       | predicate_access
+      | acc_exp
 
        | ident
 }
+
+kw_unfolding = @{ "unfolding"~!ASCII_ALPHA }
 
 func_app = {ident~func_app_args}
 func_app_args = { "("~ ")" | "("~exp~(","~exp)*~")" }
@@ -199,7 +206,7 @@ postfix = _ {
        | "[" ~ seq_op ~ "]"
 }
 seq_op = {
-       ".."~exp | exp ~ ((".." | ":=") ~ exp)?
+       ".."~exp | exp ~ (".."~exp? | ":="~exp)?
 }
 
 
@@ -447,7 +454,7 @@ stmt = {
        kw_label~ident |
        while_statement |
        if_statement |
-       ident~":="~"new(*)" |
+       ident~":="~"new"~"(" ~"*"~")" |
        ident~":="~"new("~ident~(","~ident)*~")" |
        call_statement |
        fresh_statement |

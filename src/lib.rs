@@ -83,7 +83,9 @@ fn parse_exp() {
     test_parse!(single_exp, "forall a: Int, b: Int :: true ==> true");
     test_parse!(acc_exp, "acc(x.f)");
 
+    test_parse!(single_exp, "unfolding acc(P(x)) in x");
     test_parse!(single_exp, "id(x).g == (unfolding acc(P(x)) in x).g");
+    test_parse!(single_exp, "1 == unfolding pred() in ref");
 }
 
 #[test]
