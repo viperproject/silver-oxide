@@ -40,7 +40,7 @@ acc_exp = { "acc"~"("~loc_access~(","~exp)?~")" | predicate_access }
 // trigger ::=
 //   "{" exp^,* "}"  // a trigger for a quantification
 trigger = {
-       "{"~exp~(","~exp)*~"}"
+       "{"~(exp~(","~exp)*)?~"}"
 }
 // seq-op-exp ::=
 //   exp "[" exp "]"          |  // sequence lookup
@@ -245,9 +245,9 @@ binop = {
 | implies | or | and | iff
 | eq | neq
 | lte | gte | lt  | gt
+| perm_div | magic_wand
 | add | sub | mul
 | div | rem
-| perm_div | magic_wand
 | union | intersection | setminus
 | concat
 | membership
