@@ -149,19 +149,20 @@ magic_wand_exp = { // TODO: Ban <==> or ==>
 // TODO(xavier): Fix left recursion in seq ops and field access
 // TOD(xavier): Fix precedence parsing of prefix operators
 exp_atom = {
-       "true" | "false"
+       "true"~!ASCII_ALPHA
+      | "false"~!ASCII_ALPHA
       | integer
-      | "null"
-      | "result"
+      | "null"~!ASCII_ALPHA
+      | "result"~!ASCII_ALPHA
       | "("~ exp ~ ")"
       | unop~exp
       | "old"~"("~exp~")"
       | "["~ident~"]"~"("~exp~")"
       | "lhs"~"("~exp~")"
-      | "none"
-      | "write"
-      | "epsilon"
-      | "wildcard"
+      | "none"~!ASCII_ALPHA
+      | "write"~!ASCII_ALPHA
+      | "epsilon"~!ASCII_ALPHA
+      | "wildcard"~!ASCII_ALPHA
       | "perm"~"("~loc_access~")"
       | acc_exp
       | "("~ident~"("~(exp~(","~exp)*)?~")"~":"~type~")"
@@ -180,12 +181,14 @@ exp_atom = {
        | "|"~exp~"|"
        | let_in_exp
        | forperm_exp
-       | ident~"("~(exp~(","~exp)*)?~")"
+       | func_app
 
        | ident
-
-
 }
+
+func_app = {ident~func_app_args}
+func_app_args = { "("~ ")" | "("~exp~(","~exp)*~")" }
+
 // exp = { exp_atom~(binop_plus~exp_atom)*}
 exp = {exp_atom~postfix*~(binop_plus~exp_atom~postfix*)* }
 // binop_plus = _{ "+" }
@@ -270,12 +273,12 @@ div = { "\\" }
 rem = { "%" }
 perm_div = { "/" }
 magic_wand = { "--*" }
-union = { "union" }
-intersection = { "intersection" }
-setminus = { "setminus" }
+union = @{ "union"~!ASCII_ALPHA }
+intersection = @{ "intersection"~!ASCII_ALPHA }
+setminus = @{ "setminus"~!ASCII_ALPHA }
 concat = { "++" }
-membership = @{ "in"~!(ASCII_ALPHA) }
-subset = { "subset" }
+membership = @{ "in"~!ASCII_ALPHA }
+subset = @{ "subset"~!ASCII_ALPHA }
 // unop ::=
 //   "!" |            // boolean negation
 //   "+" | "-"        // integer and permission
@@ -434,26 +437,33 @@ statement_with_optional_semicolon = { stmt~";"? }
 stmt = {
         "var"~ident~":"~type~(":="~exp)? |
        define |
-       "assert"~exp |
-       "assume"~exp |
-       "inhale"~exp |
-       "exhale"~exp |
-       "fold"~acc_exp |
-       "unfold"~acc_exp |
-       "goto"~ident |
-       "label"~ident |
-       ident~":="~exp |
-       field_access~":="~exp |
+       kw_assert~exp |
+       kw_assume~exp |
+       kw_inhale~exp |
+       kw_exhale~exp |
+       kw_fold~acc_exp |
+       kw_unfold~acc_exp |
+       kw_goto~ident |
+       kw_label~ident |
+       while_statement |
+       if_statement |
        ident~":="~"new(*)" |
        ident~":="~"new("~ident~(","~ident)*~")" |
-       if_statement |
-       while_statement |
        call_statement |
        fresh_statement |
        wand_statement |
        constraining_block |
        block
 }
+
+kw_assert = @{ "assert" ~ !ASCII_ALPHA }
+kw_assume = @{ "assume" ~ !ASCII_ALPHA }
+kw_inhale = @{ "inhale" ~ !ASCII_ALPHA }
+kw_exhale = @{ "exhale" ~ !ASCII_ALPHA }
+kw_fold   = @{ "fold"   ~ !ASCII_ALPHA }
+kw_unfold = @{ "unfold" ~ !ASCII_ALPHA }
+kw_goto   = @{ "goto"   ~ !ASCII_ALPHA }
+kw_label  = @{ "label"  ~ !ASCII_ALPHA }
 
 single_stmt = { SOI~stmt~EOI }
 
@@ -476,9 +486,12 @@ while_statement = { "while"~"("~exp~")"~(invariant)*~block }
 
 // call-statement ::= // method call [with return target]
 //   [ident^,* :=] ident "(" exp^,* ")"
-call_statement = { ((ident~",")*~ident~":=")?~ident~call_statement_args }
-call_statement_args = { "("~ ")" | "("~exp~(","~exp)*~")" }
 
+assign_target = { field_access | func_app  | ident }
+
+call_statement = { assign_target~((","~assign_target)*~":="~exp)? }
+
+one_call = {SOI~call_statement~EOI}
 // fresh-statement ::=
 //   "fresh" ident^,*
 fresh_statement = { "fresh"~ident~(","~ident)* }

@@ -63,6 +63,10 @@ macro_rules! test_parse {
     };
 }
 
+#[cfg(test)]
+mod test {
+    use pest::Parser;
+    use super::*;
 #[test]
 fn parse_binop() {
     test_parse!(single_exp, "1 + 2 + 3 <==> true || false");
@@ -86,9 +90,13 @@ fn parse_exp() {
 fn parse_stmt() {
     // test_parse!(single_stmt, "assert id(x).g == (unfolding acc(P(x)) in x).g");
     test_parse!(single_stmt, "{inhale false inhale false }");
+    test_parse!(single_stmt, "exhale acc(x.f)");
+    test_parse!(single_stmt, "m(x)");
 }
 
 #[test]
 fn parse_ternary() {
     test_parse!(single_exp, "1 ? 2 : 3 ? 3 : 5");
 }
+}
+
