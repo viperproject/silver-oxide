@@ -40,7 +40,7 @@ acc_exp = { "acc"~"("~loc_access~(","~exp)?~")" }
 // trigger ::=
 //   "{" exp^,* "}"  // a trigger for a quantification
 trigger = {
-       "{"~exp~(","~exp)~"}"
+       "{"~exp~(","~exp)*~"}"
 }
 // seq-op-exp ::=
 //   exp "[" exp "]"          |  // sequence lookup
@@ -340,7 +340,7 @@ field = { "field"~ident~":"~type~(";"?) }
 //     precondition*
 //     postcondition*
 //   "{" exp "}" // Semicolon not permitted
-function = { function_signature~(precondition)*~(postcondition)*~"{"~exp~"}" }
+function = { function_signature~(precondition)*~(postcondition)*~("{"~exp~"}")? }
 
 // precondition ::=
 //   "requires" exp
@@ -469,7 +469,8 @@ while_statement = { "while"~"("~exp~")"~(invariant)*~block }
 
 // call-statement ::= // method call [with return target]
 //   [ident^,* :=] ident "(" exp^,* ")"
-call_statement = { ((ident~",")*~ident~":=")?~ident~"("~exp~(","~exp)*~")" }
+call_statement = { ((ident~",")*~ident~":=")?~ident~call_statement_args }
+call_statement_args = { "("~ ")" | "("~exp~(","~exp)*~")" }
 
 // fresh-statement ::=
 //   "fresh" ident^,*
