@@ -1,12 +1,12 @@
-WHITESPACE = {" " | "\t" | "\n" }
-
+WHITESPACE = {" " | "\t" | NEWLINE }
+COMMENT = _{"//"~ (!"\n" ~ ANY)* | "/*"~ (!"*/"~ANY)*~"*/" }
 char = { 'a'..'z' | 'A'..'Z' | "$" | "_"}
 num = { '0'..'9' }
 
-integer = {num+}
+integer = @{num+}
 
 // Identifiers
-ident = { (char ) ~ (char | num | "'" )* }
+ident = @{ (char ) ~ (char | num | "'" )* }
 
 // Types
 // type ::=
@@ -29,7 +29,7 @@ predicate_access = { ident ~ "(" ~ exp ~ ("," ~ exp)* ~ ")" }
 
 // field-access ::=
 //   exp "." ident |              // field access
-field_access = { exp~"."~ident }
+field_access = { exp_atom~("."~ident)+ }
 // loc-access ::=
 //   field-access | predicate-access
 loc_access = {field_access | predicate_access }
@@ -153,7 +153,6 @@ exp_atom = {
       | integer
       | "null"
       | "result"
-      | ident
       | "("~ exp ~ ")"
       | unop~exp
       | "old"~"("~exp~")"
@@ -164,8 +163,8 @@ exp_atom = {
       | "epsilon"
       | "wildcard"
       | "perm"~"("~loc_access~")"
-      | ident~"("~exp~(","~exp)*~")"
-      | "("~ident~"("~exp~(","~exp)*~")"~":"~type~")"
+      | acc_exp
+      | "("~ident~"("~(exp~(","~exp)*)?~")"~":"~type~")"
       // | field_access
        | predicate_access
        | "["~exp~","~exp~"]"
@@ -173,7 +172,7 @@ exp_atom = {
        | "folding"~acc_exp~"in"~exp
        | "applying"~"("~magic_wand_exp~")"~"in"~exp
        | "packaging"~"("~magic_wand_exp~")"~"in"~exp
-       | "forall"~formal_arg~(","~formal_arg)*~"::"~trigger~(","~trigger)*~exp
+       | "forall"~formal_arg~(","~formal_arg)*~"::"~(trigger~(","~trigger)*)?~exp
        | "exists"~formal_arg~(","~formal_arg)*~"::"~exp
        | seq_constructor_exp
        | set_constructor_exp
@@ -181,12 +180,18 @@ exp_atom = {
        | "|"~exp~"|"
        | let_in_exp
        | forperm_exp
+       | ident~"("~(exp~(","~exp)*)?~")"
+
+       | ident
+
 
 }
-exp = {exp_atom~(binop_plus~exp_atom)*
-}
-
+// exp = { exp_atom~(binop_plus~exp_atom)*}
+exp = {exp_atom~postfix*~(binop_plus~exp_atom~postfix*)* }
+// binop_plus = _{ "+" }
 binop_plus = _{ binop | "?"~exp~":" }
+
+postfix = _ { "."~ident }
 
 single_exp = _{ SOI~exp~EOI }
 // exp = { "true" | "false"
@@ -230,8 +235,8 @@ single_exp = _{ SOI~exp~EOI }
 //   "in"  |           // set/multiset/sequence membership
 //   "subset"          // subset relation
 binop = {
-| eq | neq
 | implies | or | and | iff
+| eq | neq
 | lt | lte | gt | gte
 | add | sub | mul
 | div | rem
@@ -262,7 +267,7 @@ union = { "union" }
 intersection = { "intersection" }
 setminus = { "setminus" }
 concat = { "++" }
-membership = { "in" }
+membership = { "in"~WHITESPACE }
 subset = { "subset" }
 // unop ::=
 //   "!" |            // boolean negation
@@ -280,7 +285,8 @@ unop = { "!" | "+" | "-" }
 //     predicate |
 //     method
 //   )*
-sil_program = { SOI~(import | define | domain | field | function | predicate | method)*~EOI }
+sil_program = _{ SOI~(declaration)*~EOI }
+declaration = {import | define | domain | field | function | predicate | method}
 
 // import ::=
 //     "import" relative-path
@@ -323,11 +329,11 @@ function_signature = { "function"~ident~formal_args~":"~type }
 
 // axiom ::=
 //   "axiom" ident "{" exp "}" [";"]
-axiom = { "axiom"~ident~"{"~exp~"}"~";" }
+axiom = { "axiom"~ident~"{"~exp~"}"~";"? }
 
 // field ::=
 //   "field" ident ":" type [";"]
-field = { "field"~ident~":"~type~";" }
+field = { "field"~ident~":"~type~(";"?) }
 
 // function ::=
 //   function-signature
@@ -360,7 +366,7 @@ predicate = { "predicate"~ident~formal_args~("{"~exp~"}")? }
 method = { "method"~ident~formal_args~(formal_returns)?~(precondition)*~(postcondition)*~(block)?  }
 // formal-args ::=
 //   "(" formal-arg^,* ")"
-formal_args = { "("~formal_arg~(","~formal_arg)*~")" }
+formal_args = { "("~(formal_arg~(","~formal_arg)*)?~")" }
 
 // formal-arg ::=
 //   ident ":" type
@@ -418,12 +424,9 @@ statement_with_optional_semicolon = { stmt~";"? }
 //   // an arbitrary block of statements
 //   block
 
-stmt = { "var"~ident~":"~type~(":="~exp)? |
+stmt = {
+        "var"~ident~":"~type~(":="~exp)? |
        define |
-       ident~":="~exp |
-       field_access~":="~exp |
-       ident~":="~"new(*)" |
-       ident~":="~"new("~ident~(","~ident)*~")" |
        "assert"~exp |
        "assume"~exp |
        "inhale"~exp |
@@ -432,6 +435,10 @@ stmt = { "var"~ident~":"~type~(":="~exp)? |
        "unfold"~acc_exp |
        "goto"~ident |
        "label"~ident |
+       ident~":="~exp |
+       field_access~":="~exp |
+       ident~":="~"new(*)" |
+       ident~":="~"new("~ident~(","~ident)*~")" |
        if_statement |
        while_statement |
        call_statement |
@@ -440,6 +447,8 @@ stmt = { "var"~ident~":"~type~(":="~exp)? |
        constraining_block |
        block
 }
+
+single_stmt = { SOI~stmt~EOI }
 
 // if-statement ::=
 //   "if" "(" exp ")"
