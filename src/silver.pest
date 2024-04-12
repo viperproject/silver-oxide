@@ -16,12 +16,22 @@ ident = @{ (char ) ~ (char | num | "'" )* }
 // "Multiset" "[" type "]" |                      // multiset type
 // ident [ "[" type^,* "]" ]                      // [instance of a generic] domain type
 
-type = { "Int" | "Bool" | "Perm" | "Ref" | "Rational"
+type = {
+       | kw_Int
+       | kw_Bool
+       | kw_Perm
+       | kw_Ref
+       | kw_Rational
        | "Seq" ~ "[" ~ type ~ "]"
        | "Set" ~ "[" ~ type ~ "]"
        | "Multiset" ~ "[" ~ type ~ "]"
        | ident ~ ("[" ~ type ~ ("," ~ type)* ~ "]")? // ???? domain type
      }
+kw_Int = @{"Int"~ !ASCII_ALPHANUMERIC }
+kw_Bool = @{"Bool"~ !ASCII_ALPHANUMERIC }
+kw_Perm = @{"Perm"~ !ASCII_ALPHANUMERIC }
+kw_Ref = @{"Ref"~ !ASCII_ALPHANUMERIC }
+kw_Rational = @{"Rational"~ !ASCII_ALPHANUMERIC }
 
 // predicate-access ::=
 //   ident "(" exp^,* ")"         // predicate access
@@ -161,7 +171,7 @@ exp_atom = {
       | "result"~!ASCII_ALPHA
       | "("~ exp ~ ")"
       | unop~exp
-      | "old"~"("~exp~")"
+      | "old"~("["~ident~"]")?~"("~exp~")"
       | "["~ident~"]"~"("~exp~")"
       | "lhs"~"("~exp~")"
       | "none"~!ASCII_ALPHA
@@ -186,8 +196,7 @@ exp_atom = {
        | forperm_exp
        | func_app
        | predicate_access
-      | acc_exp
-
+       | acc_exp
        | ident
 }
 
@@ -209,29 +218,7 @@ seq_op = {
        ".."~exp | exp ~ (".."~exp? | ":="~exp)?
 }
 
-
 single_exp = _{ SOI~exp~EOI }
-// exp = { "true" | "false"
-//       | integer
-//       | "null"
-//       | "result"
-//       | ident
-//       | "("~ exp ~ ")"
-//       | unop~exp
-//       | exp~binop~exp
-//       | exp~"?"~exp~":"~exp
-//       | "old"~"("~exp~")"
-//       | "["~ident~"]"~"("~exp~")"
-//       | "lhs"~"("~exp~")"
-//       | "none"
-//       | "write"
-//       | "epsilon"
-//       | "wildcard"
-//       | "perm"~"("~loc_access~")"
-//       | acc_exp
-//       | ident~"("~exp~(","~exp)*~")"
-//       | "("~ident~"("~exp~(","~exp)*~")"~":"~type~")"
-// }
 
 // binop ::=
 //   "==" | "!=" |                  // equality operators
@@ -307,15 +294,20 @@ declaration = {import | define | domain | field | function | predicate | method}
 
 // import ::=
 //     "import" relative-path
-import = { "import"~relative_path }
+import = { "import"~("<"~relative_path~">" | "\""~relative_path~"\"") }
+
+  // def relativeFilePath[$: P]: P[PRawString] = ((CharIn("~.").? ~~ (CharIn("/").? ~~ CharIn(".", "A-Z", "a-z", "0-9", "_\\- \n\t")).rep(1)).! map PRawString.apply).pos
+
+relative_path = { ("~" | ".")? ~ "/"? ~ ("." | ASCII_ALPHANUMERIC | "_" | "\\" | "-" | WHITESPACE)+ }
 // relative-path ::=
 //     \A(?:[\w-]+\/?)+\z
 // relative_path = { (ident~"/")*~ident }
-relative_path = @{ ((ASCII_ALPHANUMERIC | "-")+~"/")*~(ASCII_ALPHANUMERIC | "-")+ ~"/"?}
+// relative_path = @{ ((ASCII_ALPHANUMERIC | "-")+~"/")*~(ASCII_ALPHANUMERIC | "-")+ ~"/"?}
 // define ::=
 //     "define" identifier [ "(" parameter^,* ")" ] expression-or-block
-define = { "define"~ident~"("~parameter~(","~parameter)*~")"~expression_or_block }
+define = { "define"~ident~parameters?~expression_or_block }
 
+parameters = { "("~ ")" | "("~parameter~(","~parameter)*~")" }
 // parameter ::= ident
 parameter = { ident }
 
@@ -329,7 +321,7 @@ expression_or_block = { exp | block }
 //     domain-function*
 //     axiom*
 //   "}"
-domain = { "domain"~domain_name~"{"~(domain_function)*~(axiom)*~"}" }
+domain = { "domain"~domain_name~"{"~(domain_function | axiom)*~"}" }
 
 // domain-name ::=
 //   ident |
