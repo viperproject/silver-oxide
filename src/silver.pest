@@ -269,9 +269,6 @@ subset = { "subset" }
 //   "+" | "-"        // integer and permission
 unop = { "!" | "+" | "-" }
 
-formal_arg = { ident~ ":"~ type }
-
-
 // // Declarations
 // sil-program ::=
 //   (
@@ -283,15 +280,15 @@ formal_arg = { ident~ ":"~ type }
 //     predicate |
 //     method
 //   )*
+sil_program = { SOI~(import | define | domain | field | function | predicate | method)*~EOI }
 
 // import ::=
 //     "import" relative-path
-// import = { "import"~relative_path }
-
+import = { "import"~relative_path }
 // relative-path ::=
 //     \A(?:[\w-]+\/?)+\z
 // relative_path = { (ident~"/")*~ident }
-
+relative_path = @{ ((ASCII_ALPHANUMERIC | "-")+~"/")*~(ASCII_ALPHANUMERIC | "-")+ ~"/"?}
 // define ::=
 //     "define" identifier [ "(" parameter^,* ")" ] expression-or-block
 define = { "define"~ident~"("~parameter~(","~parameter)*~")"~expression_or_block }
