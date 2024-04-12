@@ -1,4 +1,4 @@
-use pest::{pratt_parser::PrattParser, Parser};
+use pest::pratt_parser::PrattParser;
 use pest_derive::Parser;
 
 #[derive(Parser)]
@@ -56,10 +56,10 @@ lazy_static::lazy_static! {
 #[cfg(test)]
 macro_rules! test_parse {
     ($par:ident, $e:tt) => {
-        Silver::parse(Rule::$par,$e).unwrap_or_else(|e| panic!("{e}"))
+        Silver::parse(Rule::$par, $e).unwrap_or_else(|e| panic!("{e}"))
     };
-    ($x:tt) => { Silver::parse(Rule::sil_program,$x).unwrap_or_else(|e| panic!("{e}"))
-
+    ($x:tt) => {
+        Silver::parse(Rule::sil_program, $x).unwrap_or_else(|e| panic!("{e}"))
     };
 }
 
@@ -69,9 +69,9 @@ fn parse_binop() {
 }
 
 #[test]
-fn parse_field(){
+fn parse_field() {
     test_parse!(field, "field keys : Seq[Int]");
-    test_parse!( "field keys : Seq[Int]");
+    test_parse!("field keys : Seq[Int]");
 }
 
 #[test]
@@ -80,7 +80,6 @@ fn parse_exp() {
     test_parse!(acc_exp, "acc(x.f)");
 
     test_parse!(single_exp, "id(x).g == (unfolding acc(P(x)) in x).g");
-
 }
 
 #[test]
@@ -88,7 +87,6 @@ fn parse_stmt() {
     // test_parse!(single_stmt, "assert id(x).g == (unfolding acc(P(x)) in x).g");
     test_parse!(single_stmt, "{inhale false inhale false }");
 }
-
 
 #[test]
 fn parse_ternary() {

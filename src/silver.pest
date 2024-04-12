@@ -20,7 +20,7 @@ type = { "Int" | "Bool" | "Perm" | "Ref" | "Rational"
        | "Seq" ~ "[" ~ type ~ "]"
        | "Set" ~ "[" ~ type ~ "]"
        | "Multiset" ~ "[" ~ type ~ "]"
-       | ident ~ "[" ~ type ~ ("," ~ type)* ~ "]" // ???? domain type
+       | ident ~ ("[" ~ type ~ ("," ~ type)* ~ "]")? // ???? domain type
      }
 
 // predicate-access ::=
@@ -237,7 +237,7 @@ single_exp = _{ SOI~exp~EOI }
 binop = {
 | implies | or | and | iff
 | eq | neq
-| lt | lte | gt | gte
+| lte | gte | lt  | gt
 | add | sub | mul
 | div | rem
 | perm_div | magic_wand
@@ -259,15 +259,15 @@ gte = { ">=" }
 add = { "+" }
 sub = { "-" }
 mul = { "*" }
-div = { "\\\\" }
-rem = { "\\%" }
-perm_div = { "\\/" }
+div = { "\\" }
+rem = { "%" }
+perm_div = { "/" }
 magic_wand = { "--*" }
 union = { "union" }
 intersection = { "intersection" }
 setminus = { "setminus" }
 concat = { "++" }
-membership = { "in"~WHITESPACE }
+membership = @{ "in"~!(ASCII_ALPHA) }
 subset = { "subset" }
 // unop ::=
 //   "!" |            // boolean negation
@@ -317,7 +317,7 @@ domain = { "domain"~domain_name~"{"~(domain_function)*~(axiom)*~"}" }
 // domain-name ::=
 //   ident |
 //   ident "[" ident^,* "]"  //e.g. Seq[T]
-domain_name = { ident | ident~"["~ident~(","~ident)*~"]" }
+domain_name = { ident~"["~ident~(","~ident)*~"]" | ident }
 
 // domain-function ::=
 //   ["unique"] function-signature [";"]
@@ -344,11 +344,11 @@ function = { function_signature~(precondition)*~(postcondition)*~"{"~exp~"}" }
 
 // precondition ::=
 //   "requires" exp
-precondition = { "requires"~exp }
+precondition = { "requires"~exp~";"? }
 
 // postcondition ::=
 //   "ensures" exp
-postcondition = { "ensures"~exp }
+postcondition = { "ensures"~exp~";"? }
 
 // invariant ::=
 //   "invariant" exp
@@ -469,7 +469,7 @@ while_statement = { "while"~"("~exp~")"~(invariant)*~block }
 
 // call-statement ::= // method call [with return target]
 //   [ident^,* :=] ident "(" exp^,* ")"
-call_statement = { (ident~",")*~ident~":="~ident~"("~exp~(","~exp)*~")" }
+call_statement = { ((ident~",")*~ident~":=")?~ident~"("~exp~(","~exp)*~")" }
 
 // fresh-statement ::=
 //   "fresh" ident^,*
