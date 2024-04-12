@@ -145,6 +145,9 @@ magic_wand_exp = { // TODO: Ban <==> or ==>
 
 //   let-in-exp  |
 //   forperm-exp
+
+// TODO(xavier): Fix left recursion in seq ops and field access
+// TOD(xavier): Fix precedence parsing of prefix operators
 exp_atom = {
        "true" | "false"
       | integer
@@ -267,3 +270,215 @@ subset = { "subset" }
 unop = { "!" | "+" | "-" }
 
 formal_arg = { ident~ ":"~ type }
+
+
+// // Declarations
+// sil-program ::=
+//   (
+//     import    |
+//     define    |
+//     domain    |
+//     field     |
+//     function  |
+//     predicate |
+//     method
+//   )*
+
+// import ::=
+//     "import" relative-path
+// import = { "import"~relative_path }
+
+// relative-path ::=
+//     \A(?:[\w-]+\/?)+\z
+// relative_path = { (ident~"/")*~ident }
+
+// define ::=
+//     "define" identifier [ "(" parameter^,* ")" ] expression-or-block
+define = { "define"~ident~"("~parameter~(","~parameter)*~")"~expression_or_block }
+
+// parameter ::= ident
+parameter = { ident }
+
+// expression-or-block ::=
+//     exp |
+//     block
+expression_or_block = { exp | block }
+
+// domain ::=
+//   "domain" domain-name "{"
+//     domain-function*
+//     axiom*
+//   "}"
+domain = { "domain"~domain_name~"{"~(domain_function)*~(axiom)*~"}" }
+
+// domain-name ::=
+//   ident |
+//   ident "[" ident^,* "]"  //e.g. Seq[T]
+domain_name = { ident | ident~"["~ident~(","~ident)*~"]" }
+
+// domain-function ::=
+//   ["unique"] function-signature [";"]
+domain_function = { "unique"?~function_signature~";"? }
+
+// function-signature ::=
+//   "function" ident formal-args ":" type
+function_signature = { "function"~ident~formal_args~":"~type }
+
+// axiom ::=
+//   "axiom" ident "{" exp "}" [";"]
+axiom = { "axiom"~ident~"{"~exp~"}"~";" }
+
+// field ::=
+//   "field" ident ":" type [";"]
+field = { "field"~ident~":"~type~";" }
+
+// function ::=
+//   function-signature
+//     precondition*
+//     postcondition*
+//   "{" exp "}" // Semicolon not permitted
+function = { function_signature~(precondition)*~(postcondition)*~"{"~exp~"}" }
+
+// precondition ::=
+//   "requires" exp
+precondition = { "requires"~exp }
+
+// postcondition ::=
+//   "ensures" exp
+postcondition = { "ensures"~exp }
+
+// invariant ::=
+//   "invariant" exp
+invariant = { "invariant"~exp }
+
+// predicate ::=
+//   "predicate" ident formal-args ["{" exp "}"] // Semicolon not permitted
+predicate = { "predicate"~ident~formal_args~("{"~exp~"}")? }
+
+// method ::=
+//   "method" ident formal-args [formal-returns]
+//     precondition*
+//     postcondition*
+//   [ block ]
+method = { "method"~ident~formal_args~(formal_returns)?~(precondition)*~(postcondition)*~(block)?  }
+// formal-args ::=
+//   "(" formal-arg^,* ")"
+formal_args = { "("~formal_arg~(","~formal_arg)*~")" }
+
+// formal-arg ::=
+//   ident ":" type
+formal_arg = { ident~":"~type }
+
+// formal-returns ::=
+//   "returns" formal-args
+formal_returns = { "returns"~formal_args }
+
+// // Statements
+// block ::=
+//   "{" statement-with-optional-semicolon* "}"
+block = { "{"~statement_with_optional_semicolon*~"}" }
+
+// statement-with-optional-semicolon ::=
+//   stmt [";"]
+statement_with_optional_semicolon = { stmt~";"? }
+
+// stmt ::=
+//   // local variable declaration with an optional initial value
+//   "var" ident  ":" type [":=" exp] |
+
+//   // local definition
+//   define |
+
+//   // local variable assignment
+//   ident ":=" exp |
+
+//   // field assignment
+//   field-access ":=" exp |
+
+//   // object creation (all fields)
+//   ident ":=" "new(*)" |
+
+//   // object creation (specified fields)
+//   ident ":=" "new(" ident^,* ")" |
+
+//   "assert" exp |
+//   "assume" exp |
+//   "inhale" exp |
+//   "exhale" exp |
+//   "fold"   acc-exp |
+//   "unfold" acc-exp |
+
+//   "goto" ident | // goto statement
+//   "label ident | // a goto label
+
+//   if-statement           |
+//   while-statement        |
+//   call-statement         |
+//   fresh-statement        |
+//   wand-statement         |
+//   constraining-block     |
+
+//   // an arbitrary block of statements
+//   block
+
+stmt = { "var"~ident~":"~type~(":="~exp)? |
+       define |
+       ident~":="~exp |
+       field_access~":="~exp |
+       ident~":="~"new(*)" |
+       ident~":="~"new("~ident~(","~ident)*~")" |
+       "assert"~exp |
+       "assume"~exp |
+       "inhale"~exp |
+       "exhale"~exp |
+       "fold"~acc_exp |
+       "unfold"~acc_exp |
+       "goto"~ident |
+       "label"~ident |
+       if_statement |
+       while_statement |
+       call_statement |
+       fresh_statement |
+       wand_statement |
+       constraining_block |
+       block
+}
+
+// if-statement ::=
+//   "if" "(" exp ")"
+//     block
+//   ("elsif" "(" exp ")"
+//     block
+//   )*            // any number of elseif branches
+//   ["else"
+//     block
+//   ]             // optional else branch
+if_statement = { "if"~"("~exp~")"~block~("elsif"~"("~exp~")"~block)*~("else"~block)? }
+
+// while-statement ::=
+//   "while" "(" exp ")"
+//     invariant*
+//     block
+while_statement = { "while"~"("~exp~")"~(invariant)*~block }
+
+// call-statement ::= // method call [with return target]
+//   [ident^,* :=] ident "(" exp^,* ")"
+call_statement = { (ident~",")*~ident~":="~ident~"("~exp~(","~exp)*~")" }
+
+// fresh-statement ::=
+//   "fresh" ident^,*
+fresh_statement = { "fresh"~ident~(","~ident)* }
+
+// wand-statement ::=
+//   "wand" ident ":=" exp |
+//   "package" magic-wand-exp |
+//   "apply" magic-wand-exp
+wand_statement = { "wand"~ident~":"~exp |
+       "package"~magic_wand_exp |
+       "apply"~magic_wand_exp
+}
+
+// constraining-block ::=
+//   "constraining" "(" ident^,* ")"
+//     block
+constraining_block = { "constraining"~"("~ident~(","~ident)*~")"~block }

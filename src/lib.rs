@@ -47,7 +47,7 @@ lazy_static::lazy_static! {
             .op(Op::infix(mul, Left) | Op::infix(div, Left) | Op::infix(rem, Left) | Op::infix(perm_div, Left))
 
             // Addition and subtract have equal precedence
-            .op(Op::infix(binop, Left))
+            // .op(Op::infix(binop, Left))
             // .op(Op::infix(add, Left) | Op::infix(subtract, Left))
             // .op(Op::infix(multiply, Left) | Op::infix(divide, Left))
     };
