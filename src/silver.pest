@@ -105,7 +105,7 @@ let_in_exp = {
 }
 // magic-wand-exp ::=
 //     exp // except that it must not be <==> or ==>
-magic_wand_exp = { // TODO: Ban <==> or ==>
+magic_wand_exp = _{ // TODO: Ban <==> or ==>
        exp
 }
 // exp ::=
@@ -187,7 +187,7 @@ exp_atom = {
        | "applying"~"("~magic_wand_exp~")"~"in"~exp
        | "packaging"~"("~magic_wand_exp~")"~"in"~exp
        | "forall"~formal_arg_list_ne~"::"~(trigger~(","~trigger)*)?~exp
-       | "exists"~formal_arg_list_ne~"::"~exp
+       | "exists"~formal_arg_list_ne~"::"~(trigger~(","~trigger)*)?~exp
        | seq_constructor_exp
        | set_constructor_exp
        // | seq_op_exp
@@ -338,7 +338,7 @@ function_signature = { "function"~ident~formal_args~":"~type }
 
 // axiom ::=
 //   "axiom" ident "{" exp "}" [";"]
-axiom = { "axiom"~ident~"{"~exp~"}"~";"? }
+axiom = { "axiom"~ident?~"{"~exp~"}"~";"? }
 
 // field ::=
 //   "field" ident ":" type [";"]
@@ -443,14 +443,14 @@ stmt = {
        kw_fold~acc_exp |
        kw_unfold~acc_exp |
        kw_goto~ident |
-       kw_label~ident |
+       kw_label~ident~invariant_list |
        while_statement |
        if_statement |
+       wand_statement |
        ident~":="~"new"~"(" ~"*"~")" |
        ident~":="~"new("~ident~(","~ident)*~")" |
        call_statement |
        fresh_statement |
-       wand_statement |
        constraining_block |
        block
 }
@@ -481,7 +481,9 @@ if_statement = { "if"~"("~exp~")"~block~("elsif"~"("~exp~")"~block)*~("else"~blo
 //   "while" "(" exp ")"
 //     invariant*
 //     block
-while_statement = { "while"~"("~exp~")"~(invariant)*~block }
+while_statement = { "while"~"("~exp~")"~invariant_list~block }
+
+invariant_list = { (invariant~";"?)*}
 
 // call-statement ::= // method call [with return target]
 //   [ident^,* :=] ident "(" exp^,* ")"
@@ -500,7 +502,7 @@ fresh_statement = { "fresh"~ident~(","~ident)* }
 //   "package" magic-wand-exp |
 //   "apply" magic-wand-exp
 wand_statement = { "wand"~ident~":"~exp |
-       "package"~magic_wand_exp |
+       "package"~magic_wand_exp~block |
        "apply"~magic_wand_exp
 }
 
