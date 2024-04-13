@@ -26,8 +26,11 @@ type = {
        | "Set" ~ "[" ~ type ~ "]"
        | "Multiset" ~ "[" ~ type ~ "]"
        | "Map"~ "[" ~ type ~","~ type ~ "]"
-       | ident ~ ("[" ~ type ~ ("," ~ type)* ~ "]")? // ???? domain type
+       |  type_constr// ???? domain type
      }
+
+type_constr = { ident ~ ("[" ~ type ~ ("," ~ type)* ~ "]")? }
+
 kw_Int = @{"Int"~ !ASCII_ALPHANUMERIC }
 kw_Bool = @{"Bool"~ !ASCII_ALPHANUMERIC }
 kw_Perm = @{"Perm"~ !ASCII_ALPHANUMERIC }
@@ -40,7 +43,7 @@ predicate_access = _{ func_app }
 
 // field-access ::=
 //   exp "." ident |              // field access
-field_access = { exp_atom~("."~ident)+ }
+field_access = { exp_atom~postfix+ }
 // loc-access ::=
 //   field-access | predicate-access
 loc_access = {field_access | predicate_access }
@@ -87,6 +90,10 @@ seq_constructor_exp = {
        "Seq[" ~ type ~ "]()" |
        "Seq(" ~ exp ~ ("," ~ exp)* ~ ")" |
        "[" ~ exp ~ ".." ~ exp ~ ")"
+}
+
+map_constructor_exp = {
+       "Map"~ "["~ type ~ "," ~ type ~ "]"~"("~")"
 }
 
 // forperm-exp ::=
@@ -191,6 +198,7 @@ exp_atom = {
        | "exists"~formal_arg_list_ne~"::"~trigger*~exp
        | seq_constructor_exp
        | set_constructor_exp
+       | map_constructor_exp
        // | seq_op_exp
        | "|"~exp~"|"
        | let_in_exp
@@ -291,7 +299,7 @@ unop = { "!" | "+" | "-" }
 //     method
 //   )*
 sil_program = _{ SOI~(declaration)*~EOI }
-declaration = {import | define | domain | field | function | predicate | method}
+declaration = {import | define | domain | field | function | predicate | method | adt }
 
 // import ::=
 //     "import" relative-path
@@ -344,6 +352,14 @@ axiom = { "axiom"~ident?~"{"~exp~"}"~";"? }
 // field ::=
 //   "field" ident ":" type [";"]
 field = { "field"~ident~":"~type~(";"?) }
+
+
+adt = { "adt" ~ type_constr ~ adt_variants }
+
+adt_variants = {
+       "{" ~ "}"
+       | "{" ~ (ident~formal_args)* ~ "}"
+}
 
 // function ::=
 //   function-signature

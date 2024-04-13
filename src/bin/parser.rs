@@ -6,7 +6,7 @@ use silver_oxide::*;
 fn main() -> io::Result<()> {
     let mut failed = vec![];
 
-    let total = std::env::args().count();
+    let total = std::env::args().count() - 1;
     for file in std::env::args().skip(1) {
         let file = read_to_string(file)?;
         let parse = Silver::parse(Rule::sil_program, &file);
