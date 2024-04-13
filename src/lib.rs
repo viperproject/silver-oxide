@@ -65,40 +65,40 @@ macro_rules! test_parse {
 
 #[cfg(test)]
 mod test {
-    use pest::Parser;
     use super::*;
-#[test]
-fn parse_binop() {
-    test_parse!(single_exp, "1 + 2 + 3 <==> true || false");
-}
+    use pest::Parser;
+    #[test]
+    fn parse_binop() {
+        test_parse!(single_exp, "1 + 2 + 3 <==> true || false");
+    }
 
-#[test]
-fn parse_field() {
-    test_parse!(field, "field keys : Seq[Int]");
-    test_parse!("field keys : Seq[Int]");
-}
+    #[test]
+    fn parse_field() {
+        test_parse!(field, "field keys : Seq[Int]");
+        test_parse!("field keys : Seq[Int]");
+    }
 
-#[test]
-fn parse_exp() {
-    test_parse!(single_exp, "forall a: Int, b: Int :: true ==> true");
-    test_parse!(acc_exp, "acc(x.f)");
+    #[test]
+    fn parse_exp() {
+        test_parse!(single_exp, "forall a: Int, b: Int :: true ==> true");
+        test_parse!(acc_exp, "acc(x.f)");
 
-    test_parse!(single_exp, "unfolding acc(P(x)) in x");
-    test_parse!(single_exp, "id(x).g == (unfolding acc(P(x)) in x).g");
-    test_parse!(single_exp, "1 == unfolding pred() in ref");
-}
+        test_parse!(single_exp, "unfolding acc(P(x)) in x");
+        test_parse!(single_exp, "id(x).g == (unfolding acc(P(x)) in x).g");
+        test_parse!(single_exp, "1 == unfolding pred() in ref");
+    }
 
-#[test]
-fn parse_stmt() {
-    // test_parse!(single_stmt, "assert id(x).g == (unfolding acc(P(x)) in x).g");
-    test_parse!(single_stmt, "{inhale false inhale false }");
-    test_parse!(single_stmt, "exhale acc(x.f)");
-    test_parse!(single_stmt, "m(x)");
-}
+    #[test]
+    fn parse_stmt() {
+        // test_parse!(single_stmt, "assert id(x).g == (unfolding acc(P(x)) in x).g");
+        test_parse!(single_stmt, "{inhale false inhale false }");
+        test_parse!(single_stmt, "exhale acc(x.f)");
+        test_parse!(single_stmt, "m(x)");
+        test_parse!(one_decreases, "decreases f(r.val) if m(r.val) == 1");
+    }
 
-#[test]
-fn parse_ternary() {
-    test_parse!(single_exp, "1 ? 2 : 3 ? 3 : 5");
+    #[test]
+    fn parse_ternary() {
+        test_parse!(single_exp, "1 ? 2 : 3 ? 3 : 5");
+    }
 }
-}
-

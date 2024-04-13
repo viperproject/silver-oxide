@@ -47,6 +47,8 @@ field_access = { exp_atom~postfix+ }
 // loc-access ::=
 //   field-access | predicate-access
 loc_access = {field_access | predicate_access }
+
+res_acc = { magic_wand_exp | loc_access }
 // acc-exp ::=
 //    "acc" "(" loc-access ["," exp ]")" //access
                                 // default is write
@@ -99,7 +101,7 @@ map_constructor_exp = {
 // forperm-exp ::=
 //     "forperm" "[" ident^,* "]" ident "::" exp
 forperm_exp = {
-       "forperm"~formal_arg_list_ne~"["~loc_access~"]"~"::"~exp
+       "forperm"~formal_arg_list_ne~"["~res_acc~"]"~"::"~exp
 }
 
 id_ty = _{ formal_arg }
@@ -307,7 +309,7 @@ import = { "import"~("<"~relative_path~">" | "\""~relative_path~"\"") }
 
   // def relativeFilePath[$: P]: P[PRawString] = ((CharIn("~.").? ~~ (CharIn("/").? ~~ CharIn(".", "A-Z", "a-z", "0-9", "_\\- \n\t")).rep(1)).! map PRawString.apply).pos
 
-relative_path = { ("~" | ".")? ~ "/"? ~ ("." | ASCII_ALPHANUMERIC | "_" | "\\" | "-" | WHITESPACE)+ }
+relative_path = { ("~" | ".")? ~ ("/"? ~ ("." | ASCII_ALPHANUMERIC | "_" | "\\" | "-" | WHITESPACE))+ }
 // relative-path ::=
 //     \A(?:[\w-]+\/?)+\z
 // relative_path = { (ident~"/")*~ident }
@@ -370,7 +372,9 @@ function = { function_signature~(precondition | decreases)*~(postcondition | dec
 
 decreases = { "decreases"~decrease_exp }
 
-decrease_exp = {"*" | "_" | ( exp~(","~exp)*)? }
+one_decreases = {SOI~decreases~EOI}
+
+decrease_exp = { &("requires" | "ensures") | "*" | "_"~("if"~exp)? | ( exp~(","~exp)*~("if"~exp)?)? }
 // precondition ::=
 //   "requires" exp
 precondition = { "requires"~exp~";"? }
@@ -392,7 +396,7 @@ predicate = { "predicate"~ident~formal_args~("{"~exp~"}")? }
 //     precondition*
 //     postcondition*
 //   [ block ]
-method = { "method"~ident~formal_args~(formal_returns)?~(precondition)*~(postcondition)*~(block)?  }
+method = { "method"~ident~formal_args~(formal_returns)?~(precondition | decreases)*~(postcondition | decreases)*~(block)?  }
 // formal-args ::=
 //   "(" formal-arg^,* ")"
 formal_args = { "("~(formal_arg~(","~formal_arg)*)?~")" }
@@ -454,7 +458,7 @@ statement_with_optional_semicolon = { stmt~";"? }
 //   block
 
 stmt = {
-        "var"~ident~":"~type~(":="~exp)? |
+       kw_var~(ident~":"~type~(","~ident~":"~type)*)~(":="~exp)? |
        define |
        kw_assert~exp |
        kw_assume~exp |
@@ -464,6 +468,8 @@ stmt = {
        kw_unfold~acc_exp |
        kw_goto~ident |
        kw_label~ident~invariant_list |
+       kw_havoc~loc_access |
+       kw_quasihavoc~(exp~"==>")?~exp |
        while_statement |
        if_statement |
        wand_statement |
@@ -475,6 +481,9 @@ stmt = {
        block
 }
 
+
+
+kw_var    = @{ "var" ~ !ASCII_ALPHA }
 kw_assert = @{ "assert" ~ !ASCII_ALPHA }
 kw_assume = @{ "assume" ~ !ASCII_ALPHA }
 kw_inhale = @{ "inhale" ~ !ASCII_ALPHA }
@@ -483,6 +492,8 @@ kw_fold   = @{ "fold"   ~ !ASCII_ALPHA }
 kw_unfold = @{ "unfold" ~ !ASCII_ALPHA }
 kw_goto   = @{ "goto"   ~ !ASCII_ALPHA }
 kw_label  = @{ "label"  ~ !ASCII_ALPHA }
+kw_havoc  = @{ "havoc"  ~ !ASCII_ALPHA }
+kw_quasihavoc = @{ "quasihavoc" ~ !ASCII_ALPHA }
 
 single_stmt = { SOI~stmt~EOI }
 
@@ -503,7 +514,7 @@ if_statement = { "if"~"("~exp~")"~block~("elsif"~"("~exp~")"~block)*~("else"~blo
 //     block
 while_statement = { "while"~"("~exp~")"~invariant_list~block }
 
-invariant_list = { (invariant~";"?)*}
+invariant_list = { ((invariant | decreases)~";"?)*}
 
 // call-statement ::= // method call [with return target]
 //   [ident^,* :=] ident "(" exp^,* ")"
