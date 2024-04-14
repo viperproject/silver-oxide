@@ -470,6 +470,7 @@ stmt = {
        kw_label~ident~invariant_list |
        kw_havoc~loc_access |
        kw_quasihavoc~(exp~"==>")?~exp |
+       kw_quasihavocall~formal_arg_list_ne~"::"~(exp~"==>")?~exp |
        while_statement |
        if_statement |
        wand_statement |
@@ -494,6 +495,7 @@ kw_goto   = @{ "goto"   ~ !ASCII_ALPHA }
 kw_label  = @{ "label"  ~ !ASCII_ALPHA }
 kw_havoc  = @{ "havoc"  ~ !ASCII_ALPHA }
 kw_quasihavoc = @{ "quasihavoc" ~ !ASCII_ALPHA }
+kw_quasihavocall = @{ "quasihavocall" ~ !ASCII_ALPHA }
 
 single_stmt = { SOI~stmt~EOI }
 
