@@ -8,22 +8,21 @@ fn main() -> io::Result<()> {
 
     let total = std::env::args().count() - 1;
     for file in std::env::args().skip(1) {
-        let Ok(file) = read_to_string(file) else {
+        let Ok(contents) = read_to_string(file.clone()) else {
             continue;
         };
-        let parse = Silver::parse(Rule::sil_program, &file);
+        let parse = Silver::parse(Rule::sil_program, &contents);
 
         if let Err(e) = parse {
-            failed.push(e);
+            failed.push((file, e));
         }
     }
 
     if !failed.is_empty() {
-        if failed.len() == 1 {
-            eprintln!("{}", failed[0]);
-        } else {
-            eprintln!("Failed to parse {} / {} files", failed.len(), total);
-        }
+        eprintln!("{}", failed[0].0);
+        eprintln!("{}", failed[0].1);
+
+        eprintln!("Failed to parse {} / {} files", failed.len(), total);
         exit(1);
     }
     Ok(())

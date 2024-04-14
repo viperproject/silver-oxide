@@ -94,7 +94,9 @@ mod test {
         test_parse!(single_stmt, "{inhale false inhale false }");
         test_parse!(single_stmt, "exhale acc(x.f)");
         test_parse!(single_stmt, "m(x)");
+        test_parse!(one_decreases, "decreases if false");
         test_parse!(one_decreases, "decreases f(r.val) if m(r.val) == 1");
+        test_parse!(single_stmt, "(b[..1][0]).f := a");
     }
 
     #[test]

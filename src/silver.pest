@@ -96,6 +96,7 @@ seq_constructor_exp = {
 
 map_constructor_exp = {
        "Map"~ "["~ type ~ "," ~ type ~ "]"~"("~")"
+       | "Map"~"("~ (exp ~ ":=" ~ exp) ~ (","~exp ~ ":=" ~ exp)* ~ ")"
 }
 
 // forperm-exp ::=
@@ -171,6 +172,21 @@ magic_wand_exp = _{ // TODO: Ban <==> or ==>
 //   let-in-exp  |
 //   forperm-exp
 
+annotation = { "@"~ annotation_ident ~ annotation_args }
+
+  // def annotationIdentifier[$: P]: P[PRawString] = P((identStarts ~~ CharIn("0-9", "A-Z", "a-z", "$_.").repX).!./ map PRawString.apply).pos
+
+
+
+annotation_ident = @{ char~ (ASCII_ALPHANUMERIC | "$" | "_" | ".")* }
+annotation_args = {
+       | "(" ~ ")"
+       | "(" ~ string_lit ~ ("," ~ string_lit)* ~ ")"
+}
+
+string_lit = @{ "\"" ~ (! "\"" ~ ANY)* ~ "\"" }
+
+
 // TODO(xavier): Fix left recursion in seq ops and field access
 // TOD(xavier): Fix precedence parsing of prefix operators
 exp_atom = {
@@ -209,6 +225,7 @@ exp_atom = {
        | predicate_access
        | acc_exp
        | ident
+       | annotation~exp
 }
 
 kw_unfolding = @{ "unfolding"~!ASCII_ALPHA }
@@ -332,8 +349,9 @@ expression_or_block = { exp | block }
 //     domain-function*
 //     axiom*
 //   "}"
-domain = { "domain"~domain_name~"{"~(domain_function | axiom)*~"}" }
+domain = { annotation*~"domain"~domain_name~domain_interpretation?~"{"~(domain_function | axiom)*~"}" }
 
+domain_interpretation = {"interpretation" ~ "(" ~ (ident ~ ":" ~ string_lit) ~ ("," ~ ident ~ ":" ~ string_lit)* ~ ")"}
 // domain-name ::=
 //   ident |
 //   ident "[" ident^,* "]"  //e.g. Seq[T]
@@ -341,40 +359,57 @@ domain_name = { ident~"["~ident~(","~ident)*~"]" | ident }
 
 // domain-function ::=
 //   ["unique"] function-signature [";"]
-domain_function = { "unique"?~function_signature~";"? }
+domain_function = { "unique"?~function_signature ~ decl_interpretation?~";"? }
 
 // function-signature ::=
 //   "function" ident formal-args ":" type
-function_signature = { "function"~ident~formal_args~":"~type }
+function_signature = { annotation*~"function"~ident~formal_args~":"~type }
 
 // axiom ::=
 //   "axiom" ident "{" exp "}" [";"]
-axiom = { "axiom"~ident?~"{"~exp~"}"~";"? }
+axiom = { annotation*~"axiom"~ident?~"{"~exp~"}"~";"? }
 
 // field ::=
 //   "field" ident ":" type [";"]
-field = { "field"~ident~":"~type~(";"?) }
+field = { annotation*~"field"~ident~":"~type~(";"?) }
 
 
-adt = { "adt" ~ type_constr ~ adt_variants }
+adt = { "adt" ~ type_constr ~ adt_variants ~ derives? }
 
 adt_variants = {
        "{" ~ "}"
        | "{" ~ (ident~formal_args)* ~ "}"
 }
 
+// Temporary until I can figure out what the actual syntax for derives is
+derives = {"derives" ~ "{" ~ (!"}" ~ ANY)* ~ "}" }
+
 // function ::=
 //   function-signature
 //     precondition*
 //     postcondition*
 //   "{" exp "}" // Semicolon not permitted
-function = { function_signature~(precondition | decreases)*~(postcondition | decreases)*~("{"~exp~"}")? }
+function = { function_signature ~(precondition | decreases)*~(postcondition | decreases)*~("{"~exp~"}")? }
 
-decreases = { "decreases"~decrease_exp }
+decl_interpretation = { "interpretation" ~ string_lit }
+
+
+decreases = {
+       "decreases"~decreases_condition
+}
+
+decreases_condition = {
+| &("requires" | "ensures" | "{")
+| "if"~exp
+| "*"~("if"~exp)?
+| "_"~("if"~exp)?
+| exp~(","~exp)*~("if"~exp)?
+}
+
 
 one_decreases = {SOI~decreases~EOI}
 
-decrease_exp = { &("requires" | "ensures") | "*" | "_"~("if"~exp)? | ( exp~(","~exp)*~("if"~exp)?)? }
+// decrease_exp = { &("requires" | "ensures") | "*" | |  }
 // precondition ::=
 //   "requires" exp
 precondition = { "requires"~exp~";"? }
@@ -389,14 +424,14 @@ invariant = { "invariant"~exp }
 
 // predicate ::=
 //   "predicate" ident formal-args ["{" exp "}"] // Semicolon not permitted
-predicate = { "predicate"~ident~formal_args~("{"~exp~"}")? }
+predicate = { annotation*~"predicate"~ident~formal_args~("{"~exp~"}")? }
 
 // method ::=
 //   "method" ident formal-args [formal-returns]
 //     precondition*
 //     postcondition*
 //   [ block ]
-method = { "method"~ident~formal_args~(formal_returns)?~(precondition | decreases)*~(postcondition | decreases)*~(block)?  }
+method = { annotation* ~ "method"~ident~formal_args~(formal_returns)?~(precondition | decreases)*~(postcondition | decreases)*~(block)?  }
 // formal-args ::=
 //   "(" formal-arg^,* ")"
 formal_args = { "("~(formal_arg~(","~formal_arg)*)?~")" }
@@ -457,10 +492,13 @@ statement_with_optional_semicolon = { stmt~";"? }
 //   // an arbitrary block of statements
 //   block
 
-stmt = {
+stmt = { annotation?~stmt_raw }
+
+stmt_raw = {
        kw_var~(ident~":"~type~(","~ident~":"~type)*)~(":="~exp)? |
        define |
        kw_assert~exp |
+       kw_refute~exp |
        kw_assume~exp |
        kw_inhale~exp |
        kw_exhale~exp |
@@ -486,6 +524,7 @@ stmt = {
 
 kw_var    = @{ "var" ~ !ASCII_ALPHA }
 kw_assert = @{ "assert" ~ !ASCII_ALPHA }
+kw_refute = @{ "refute" ~ !ASCII_ALPHA }
 kw_assume = @{ "assume" ~ !ASCII_ALPHA }
 kw_inhale = @{ "inhale" ~ !ASCII_ALPHA }
 kw_exhale = @{ "exhale" ~ !ASCII_ALPHA }
