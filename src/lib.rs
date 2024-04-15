@@ -5,6 +5,8 @@ use pest_derive::Parser;
 #[grammar = "silver.pest"]
 pub struct Silver;
 
+mod peg;
+
 // Expression operator priority
 // ============================
 // (operators are in general, right-associative)
