@@ -2,7 +2,8 @@ peg::parser! {
     pub grammar silver_parser() for str {
         rule _ = quiet! { ___ __ ** ___ ___ }
 
-        rule ___ = (" " / "\t" / "\n")*
+        rule white_space() = quiet! { " " / "\t" / "\n" / "\r\n" } / expected!("whitespace")
+        rule ___ = white_space()*
 
         rule __ = "//" (! "\n" [_])* / "/*" (! "\n" [_]) "*/"
 
@@ -20,11 +21,14 @@ peg::parser! {
             / "return" / "break" / "continue" / "skip"
             / "forall" / "exists"
             / "inhale" / "exhale" / "unfold" / "fold" / "acc"
+            / "in"
             / "none"
 
         rule ident()
-            = quiet! { !reserved() n:$(start_char() char()*) }
+            = quiet! { !(reserved() white_space()) n:$(start_char() char()*) }
             / expected!("identifier")
+
+        rule integer() = ['0'..='9']+
 
         rule comma() = _ "," _
 
@@ -94,7 +98,7 @@ peg::parser! {
 
         rule atom()
             = "true" / "false"
-            // / integer()
+            / integer()
             / "null"
             / "result"
             / "(" _ exp() _ ")"
@@ -139,15 +143,15 @@ peg::parser! {
             x:@ (_ ">=" _) y:(@) {}
             x:@ (_ ">" _) y:(@) {}
             x:@ (_ "<" _) y:(@) {}
-            x:@ (_ "in" _) y:(@) {}
+            x:@ (_ "in" &white_space() _) y:(@) {}
             --
             x:(@) (_ "-" _) y:@ {}
             x:(@) (_ "+" _) y:@ {}
             x:(@) (_ "++" _) y:@ {}
-            x:(@) (_ "union" _) y:@ {}
-            x:(@) (_ "setminus" _) y:@ {}
-            x:(@) (_ "intersection" _) y:@ {}
-            x:(@) (_ "subset" _) y:@ {}
+            x:(@) (_ "union" white_space() _) y:@ {}
+            x:(@) (_ "setminus" white_space() _) y:@ {}
+            x:(@) (_ "intersection" white_space() _) y:@ {}
+            x:(@) (_ "subset" white_space() _) y:@ {}
             --
             x:(@) (_ "*" _) y:@ {}
             x:(@) (_ "/" _) y:@ {}
@@ -163,7 +167,7 @@ peg::parser! {
 
         /// Statements
 
-        rule block() = "{" _ statement() ** _ _ "}"
+        rule block() = "{" _ statement() ** (opt_semi()) _ "}"
 
         rule statement()
             = "assert" _ exp()
@@ -178,6 +182,7 @@ peg::parser! {
             / "havoc" _ loc_access()
             / "quasihavoc" _ (exp() _ "==>")? _ exp()
             / "quasihavocall" _ formal_arg() ++ _ _ "::" _ (exp() _ "==>")? _ exp()
+            / "var" _ formal_arg() ** comma() _ (":=" _ exp())?
             / while_statement()
             / if_statement()
             / wand_statement()
@@ -189,8 +194,9 @@ peg::parser! {
             / block()
 
         rule semi() = _ ";" _
+        rule opt_semi() = _ ";"? _
 
-        rule while_statement() = "while" _ exp() _ invariant() ** semi() _ "do" _ block()
+        rule while_statement() = "while" _ "(" _ exp() _ ")" _ invariant() ** opt_semi() _ block()
 
         rule invariant() = "invariant" _ exp()
 
@@ -221,7 +227,7 @@ peg::parser! {
 
         rule expression_or_block() = exp() / block()
 
-        rule domain() = "domain" _ domain_name() _ domain_interpretation()? _ "{" _ domain_element() ** (_ (";" _)?) _ "}"
+        rule domain() = "domain" _ domain_name() _ domain_interpretation()? _ "{" _ domain_element() ** opt_semi() _ "}"
 
         rule domain_name() = ident() _ ("[" _ ident() ** comma() _ "]")?
 
@@ -238,7 +244,7 @@ peg::parser! {
 
         rule field() = "field" _ ident() _ ":" _ type_()
 
-        rule function() = function_signature() _ (precondition() / decreases())** _ _ (postcondition() / decreases()) ** _  _ block()?
+        rule function() = function_signature() _ (precondition() / decreases())** _ _ (postcondition() / decreases()) ** _  _ ("{" _ exp() _ "}")?
 
         rule predicate() = "predicate" _ ident() _ paren_list(<formal_arg()>) _ "{" _ exp() _ "}"
 
