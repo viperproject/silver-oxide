@@ -11,12 +11,9 @@ fn main() -> io::Result<()> {
         let Ok(contents) = read_to_string(file.clone()) else {
             continue;
         };
-        let parse = Silver::parse(Rule::sil_program, &contents);
+        // let  = Silver::parse(Rule::sil_program, &contents);
 
         let peg_parse = peg::silver_parser::sil_program(&contents);
-        if let Err(e) = parse {
-            failed.push((file.clone(), format!("pest: {e}")));
-        }
 
         if let Err(e) = peg_parse {
             failed.push((file, format!("peg:  {e}")));
