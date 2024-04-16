@@ -42,10 +42,10 @@ peg::parser! {
 
         rule annotated<R>(r: rule<R>) = annotation() ** _ _ r()
 
-        /// Types 
+        /// Types
 
         rule type_() -> ()
-            = 
+            =
              type_constr()
             / "Int"
             / "Bool"
@@ -113,7 +113,7 @@ peg::parser! {
             = kw(<"true">) / kw(<"false">)
             / integer()
             / kw(<"null">)
-		    / kw(<"result">)
+            / kw(<"result">)
             / "(" _ exp() _ (":" _ type_())? _ ")"
             / "old" _ ("[" _ ident() _ "]")? _ "(" _ exp() _ ")"
             / "[" _ ident() _ "]" _ "(" _ exp() _ ")"
@@ -136,12 +136,12 @@ peg::parser! {
             / acc_exp()
             / func_app()
             / ident()
-    
+
 
 
         rule full_exp() -> () = precedence! {
-        	x:@ (_ "?" _ exp() _ ":" _) y:(@) {}
-        	--
+            x:@ (_ "?" _ exp() _ ":" _) y:(@) {}
+            --
             x:@ (_ "<==>" _) y:(@) {}
             --
             x:@ (_ "==>" _) y:(@) {}
@@ -175,9 +175,9 @@ peg::parser! {
             x:(@) (_ "\\" _) y:@ {}
             --
             x:@ (_ "." ident()) {}
-          	x:@ (_ "[" _ seq_op() _ "]" _) {}
-          	"-" _ x:@ {}
-          	"!" _ x:@ {}
+              x:@ (_ "[" _ seq_op() _ "]" _) {}
+              "-" _ x:@ {}
+              "!" _ x:@ {}
             --
             annotated(<atom()>) {}
         }
@@ -233,8 +233,8 @@ peg::parser! {
 
         // rule assign_target() = field_access() / func_app() / ident()
 
-        rule assign_target() = 
-        	 atom() _ ("(" _ exp() ** comma() _ ")")? _ ("." ident() / "[" _ exp() _ "]") ** _
+        rule assign_target() =
+             atom() _ ("(" _ exp() ** comma() _ ")")? _ ("." ident() / "[" _ exp() _ "]") ** _
 
         rule fresh_statement() -> () = "fresh" _ ident() ++ comma()
 
@@ -299,8 +299,8 @@ peg::parser! {
 
         rule decreases() = "decreases" _ ("*" / "_" / exp() ** comma())? _ ("if" _ exp())?
 
-        rule contract() = 
-        	((precondition() / decreases()) opt_semi())* _ ((postcondition() / decreases()) opt_semi())*
+        rule contract() =
+            ((precondition() / decreases()) opt_semi())* _ ((postcondition() / decreases()) opt_semi())*
 
 
     }

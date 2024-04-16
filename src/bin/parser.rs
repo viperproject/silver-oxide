@@ -1,6 +1,5 @@
 use std::{fs::read_to_string, io, process::exit};
 
-use pest::Parser;
 use silver_oxide::*;
 
 fn main() -> io::Result<()> {
