@@ -24,8 +24,8 @@ peg::parser! {
             / "none" / "wildcard" / "write" / "epsilon"
             / "requires" / "ensures" / "returns" / "decreases" / "result"
 
-        rule ident() -> ()
-            = quiet! { !(reserved() white_space()) n:$(start_char() char()*) }
+        rule ident() -> Ident
+            = quiet! { !(reserved() white_space()) n:$(start_char() char()*) { Ident(n.to_string())} }
             / expected!("identifier")
 
         rule kw<R>(r: rule<R>) -> () = r() !char()
@@ -44,19 +44,22 @@ peg::parser! {
 
         /// Types
 
-        rule type_() -> ()
+        rule type_() -> Type
             =
-             type_constr()
-            / "Int"
-            / "Bool"
-            / "Perm"
-            / "Ref"
-            / "Rational"
-            / ("Seq" _ "[" _ type_() _ "]")
-            / ("Set" _ "[" _ type_() _ "]")
-            / ("Map" _ "[" _ type_() _ "," _ type_() _ "]")
+             type_constr() 
+            / "Int" { Type::Int }
+            / "Bool" { Type::Bool }
+            / "Perm" { Type::Perm }
+            / "Ref" { Type::Ref }
+            / "Rational"   { Type::Rational }
+            / "Seq" _ "[" _ ty:type_() _ "]" { Type::Seq(Box::new(ty)) }
+            / "Set" _ "[" _ ty:type_() _ "]" { Type::Set(Box::new(ty)) }
+            / "Map" _ "[" _ a:type_() _ "," _ b:type_() _ "]" { Type::Map(Box::new(a), Box::new(b))}
 
-        rule type_constr() -> () = ident() _ ("[" _ type_() ** comma() _ "]")?
+        rule type_constr() -> Type = nm:ident() _ tys:("[" _ tys:(type_() ** comma()) _ "]" { tys })?
+            {   let tys = tys.unwrap_or_default();
+                Type::User(nm, tys) 
+            }
 
         rule formal_arg() -> () = ident() _ ":" _ type_() / type_() { }
 
@@ -175,9 +178,9 @@ peg::parser! {
             x:(@) (_ "\\" _) y:@ {}
             --
             x:@ (_ "." ident()) {}
-              x:@ (_ "[" _ seq_op() _ "]" _) {}
-              "-" _ x:@ {}
-              "!" _ x:@ {}
+            x:@ (_ "[" _ seq_op() _ "]" _) {}
+            "-" _ x:@ {}
+            "!" _ x:@ {}
             --
             annotated(<atom()>) {}
         }
@@ -222,6 +225,9 @@ peg::parser! {
         rule semi() = _ ";" _
         rule opt_semi() = _ ";"? _
 
+        rule tupled<R>(r: rule<R>) -> Vec<R> = "(" _ res:(r() ** comma()) _ ")" { res }
+        rule bracketed<R>(r: rule<R>) -> Vec<R> = "[" _ res:(r() ** comma()) _ "]" { res }
+
         rule while_statement() -> () = "while" _ "(" _ exp() _ ")" _ ((invariant() / decreases())  opt_semi())* _ block()
 
         rule invariant() = "invariant" _ exp()
@@ -244,24 +250,38 @@ peg::parser! {
 
         rule constraining_block() -> () = "constraining" _ "(" _ ident() ++ comma() _ ")" _ block()
 
-        rule expression_or_block() = exp() / block()
+        rule expression_or_block() -> ExpOrBlock = exp()  { ExpOrBlock::Exp(()) } / block() { ExpOrBlock::Block(()) }
 
         /// Declarations
 
         pub rule sil_program() = _ annotated(<declaration()>) ** opt_semi() _
 
-        rule declaration() -> () = import() / define() / domain() / field() / function() / predicate() / method() / adt()
+        rule declaration() -> Declaration 
+            = i:import() { Declaration::Import(i) } 
+            / d:define() { Declaration::Define(d) }
+            / d:domain()  { Declaration::Domain(d) }
+            // / field() 
+            // / function() 
+            // / predicate() 
+            // / method() 
+            // / adt()
 
-        rule import() -> () = "import" _ ("<" _ relative_path() _ ">" / "\"" _ relative_path() _ "\"")
+        rule import() -> Import = "import" _ r:("<" _ r:relative_path() _ ">" { r } / "\"" _ r:relative_path() _ "\"" { r })
+            { Import { path: r } }
 
-        rule define() -> () = "define" _ ident() _ ("(" _ ident() ** comma() _ ")")? _ expression_or_block()
+        rule define() -> Define = "define" _ nm:ident() _ ids:(tupled(<ident()>))? _ body:expression_or_block()
+            { Define { name: nm, args: ids.unwrap_or_default(), body } }
 
+        rule domain() -> Domain = 
+            "domain" _ 
+            name:ident() _ 
+            params:(bracketed(<ident()>))? _
+            interp:domain_interpretation()? _ 
+            "{" _ annotated(<domain_element()>) ** opt_semi() _ "}" 
+        { Domain { name, interpretation: interp.unwrap_or_default(), elements: todo!() } }
 
-        rule domain() -> () = "domain" _ domain_name() _ domain_interpretation()? _ "{" _ annotated(<domain_element()>) ** opt_semi() _ "}"
-
-        rule domain_name() -> () = ident() _ ("[" _ ident() ** comma() _ "]")?
-
-        rule domain_interpretation() = "interpretation" _ "(" _ (ident() _ ":" _ string_lit())++comma() _ ")"
+        rule domain_interpretation() -> Vec<(Ident, String)> = "interpretation" _ "(" _ rs:((i:ident() _ ":" _ s:string_lit() { (i, s)})++comma()) _ ")"
+            { rs }
 
         rule domain_element() -> () = domain_function() {} / axiom() {}
 
@@ -287,9 +307,9 @@ peg::parser! {
 
         rule derives() = "derives" _ "{" _ (!"}" [_])* _ "}"
 
-        rule relative_path() = ['~' | '.']? (['/']? ['.' | 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '\\' | '-' | ' '])+
+        rule relative_path() -> String = s:$(['~' | '.']? (['/']? ['.' | 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '\\' | '-' | ' '])+) { s.to_string() }
 
-        rule string_lit() = "\"" _ (!"\"" [_])* _ "\""
+        rule string_lit() -> String = str:$("\"" _ (!"\"" [_])* _ "\"") { str.to_string() }
 
         rule axiom() = "axiom" _ ident()? _ "{" _ exp() _ "}"
 
@@ -307,3 +327,134 @@ peg::parser! {
 }
 
 pub struct Ident(pub String);
+
+pub enum Declaration {
+    Import(Import),
+    Define(Define),
+    Domain(Domain),
+    Field(Field),
+    Function(Function),
+    Predicate(Predicate),
+    Method(Method),
+    Adt(Adt),
+}
+
+pub struct Import {
+    path: String,
+}
+pub struct Define {
+    name: Ident,
+    args: Vec<Ident>,
+    body: ExpOrBlock,
+}
+
+pub enum ExpOrBlock {
+    Exp(()),
+    Block(()),
+}
+
+pub enum Exp {
+
+}
+
+pub struct Block {
+    statements: Vec<Statement>,
+}
+
+pub enum Statement {
+    Assert(Exp),
+    Refute(Exp),
+    Assume(Exp),
+    Inhale(Exp),
+    Exhale(Exp),
+    Fold(Exp),
+    Unfold(Exp),
+    Goto(Ident),
+    Label(Ident, Vec<Invariant>),
+    Havoc(LocAccess),
+    QuasiHavoc(Option<Exp>, Exp),
+    QuasiHavocAll(Vec<Ident>, Option<Exp>, Exp),
+    Var(Vec<Ident>, Option<Exp>),
+    While(Exp, Vec<Invariant>, Block),
+    If(Exp, Block, Vec<(Exp, Block)>, Option<Block>),
+    Wand(Ident, Exp),
+    Package(Exp, Option<Block>),
+    Apply(Exp),
+    Fresh(Vec<Ident>),
+    Constraining(Vec<Ident>, Block),
+}
+
+pub struct Invariant(Exp);
+
+pub struct LocAccess {
+    loc: Exp,
+}
+
+
+pub struct Field {
+    fields: Vec<(String, String)>,
+}
+
+pub struct Domain {
+    name: Ident,
+    interpretation: Vec<(Ident, String)>,
+    elements: Vec<DomainElement>,
+}
+
+pub struct Function {
+    signature: Signature,
+    contract: Contract,
+    body: Option<String>,
+}
+
+pub struct Contract {
+    preconditions: Vec<String>,
+    postconditions: Vec<String>,
+}
+
+pub enum DomainElement {
+    DomainFunction(DomainFunction),
+    Axiom(String),
+}
+
+pub struct DomainFunction {
+    unique: bool,
+    signature: Signature,
+    interpretation: Option<String>,
+}
+
+pub struct Signature {
+    name: Ident,
+    args: Vec<(Ident, Type)>,
+    ret: Option<Type>,
+}
+
+pub enum Type {
+    Int,
+    Bool,
+    Perm,
+    Ref,
+    Rational,
+    Seq(Box<Type>),
+    Set(Box<Type>),
+    Map(Box<Type>, Box<Type>),
+    User(Ident, Vec<Type>),
+
+}
+
+pub struct Predicate {
+    signature: Signature,
+    body: String,
+}
+
+pub struct Method {
+    signature: Signature,
+    contract: Contract,
+    body: Option<String>,
+}
+
+pub struct Adt {
+    name: Ident,
+    variants: Vec<(Ident, Vec<(String, String)>)>,
+    derives: Vec<String>,
+}
