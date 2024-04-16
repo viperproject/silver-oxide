@@ -13,8 +13,13 @@ fn main() -> io::Result<()> {
         };
         let parse = Silver::parse(Rule::sil_program, &contents);
 
+        let peg_parse = peg::silver_parser::sil_program(&contents);
         if let Err(e) = parse {
-            failed.push((file, e));
+            failed.push((file.clone(), format!("pest: {e}")));
+        }
+
+        if let Err(e) = peg_parse {
+            failed.push((file, format!("peg:  {e}")));
         }
     }
 

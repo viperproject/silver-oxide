@@ -1,6 +1,10 @@
 peg::parser! {
-    grammar silver_parser() for str {
-        rule _ = (" " / "\t" / "\n")*
+    pub grammar silver_parser() for str {
+        rule _ = quiet! { ___ __ ** ___ ___ }
+
+        rule ___ = (" " / "\t" / "\n")*
+
+        rule __ = "//" (! "\n" [_])* / "/*" (! "\n" [_]) "*/"
 
         rule start_char() -> &'input str
             = $(['A'..='Z' | 'a'..='z'| '$' | '_' ])
@@ -8,15 +12,19 @@ peg::parser! {
         rule char() -> &'input str
             = $(['A'..='Z' | 'a'..='z'| '$' | '_' | '\'' | '0'..='9' ])
 
-        rule reserved() 
-            = "havoc" / "true" / "false" 
-            / "Set" / "Seq" / "Map" / "Multiset" / "Int" / "Bool" / "Perm" / "Ref" / "Rational" 
-            / "forperm" / "let" / "in" / "if" / "then" / "else" / "elsif" / "while" / "do" / "assert" 
-            / "assume" / "havoc" / "return" / "break" / "continue" / "skip" 
+        rule reserved()
+            = "havoc" / "true" / "false"
+            / "Set" / "Seq" / "Map" / "Multiset" / "Int" / "Bool" / "Perm" / "Ref" / "Rational"
+            / "forperm" / "let" / "in" / "if" / "then" / "else" / "elsif" / "while" / "do"
+            / "assert" / "assume" / "havoc"
+            / "return" / "break" / "continue" / "skip"
             / "forall" / "exists"
+            / "inhale" / "exhale" / "unfold" / "fold" / "acc"
+            / "none"
 
-        rule ident() -> Ident
-            = !reserved() n:$(start_char() char()*) { Ident(n.to_owned()) }
+        rule ident()
+            = quiet! { !reserved() n:$(start_char() char()*) }
+            / expected!("identifier")
 
         rule comma() = _ "," _
 
@@ -31,7 +39,7 @@ peg::parser! {
             / ("Map" _ "[" _ type_() _ "," _ type_() _ "]")
             / type_constr()
 
-        rule type_constr() -> () = ident() _ ("[" _ type_() ** comma() _ "]")? 
+        rule type_constr() -> () = ident() _ ("[" _ type_() ** comma() _ "]")?
 
         rule formal_arg() -> () = ident() _ ":" _ type_() { }
 
@@ -40,7 +48,7 @@ peg::parser! {
         rule predicate_access() -> () =
             ident() _ "(" _ exp() ** comma() _ ")"
 
-        rule field_access() = "fail"
+        rule field_access() = ident() ("." ident())+
 
         rule loc_access() = field_access() / predicate_access()
 
@@ -54,25 +62,25 @@ peg::parser! {
 
         /// Expressions
 
-        rule seq_op_exp() 
-			= exp() _ "[" _ exp() _ "]" 
-			/ exp() _ "[" _ ".." _ exp() _ "]" 
-			/ exp() _ "[" _ exp() _ ".." _ "]" 
-			/ exp() _ "[" _ exp() _ ".." _ exp() _ "]" 
-			/ exp() _ "[" _ exp() _ ":=" _ exp() _ "]"
+        rule seq_op_exp()
+            = exp() _ "[" _ exp() _ "]"
+            / exp() _ "[" _ ".." _ exp() _ "]"
+            / exp() _ "[" _ exp() _ ".." _ "]"
+            / exp() _ "[" _ exp() _ ".." _ exp() _ "]"
+            / exp() _ "[" _ exp() _ ":=" _ exp() _ "]"
 
-        rule set_constructor_exp() 
+        rule set_constructor_exp()
             = "Set" _ "[" _ type_() _ "]" _ "(" _ ")"
             / "Set" _ "(" _ exp() ** comma() _ ")"
             / "Multiset" _ "[" _ type_() _ "]" _ "(" _ ")"
             / "Multiset" _ "(" _ exp() ** comma() _ ")"
 
-        rule seq_constructor_exp() 
+        rule seq_constructor_exp()
             = "Seq" _ "[" _ type_() _ "]" _ "(" _ ")"
             / "Seq" _ "(" _ exp() ** comma() _ ")"
             / "[" _ exp() _ ".." _ exp() _ ")"
 
-        rule map_constructor_exp() 
+        rule map_constructor_exp()
             = "Map" _ "[" _ type_() _ "," _ type_() _ "]" _ "(" _ ")"
             / "Map" _ "(" _ (exp() _ ":=" _ exp()) ** comma() _ ")"
 
@@ -84,9 +92,9 @@ peg::parser! {
 
         rule func_app() = ident() _ "(" _ exp() ** comma() _ ")"
 
-        rule exp() 
+        rule atom()
             = "true" / "false"
-            // / integer() 
+            // / integer()
             / "null"
             / "result"
             / "(" _ exp() _ ")"
@@ -111,15 +119,52 @@ peg::parser! {
             / predicate_access()
             / acc_exp()
             / func_app()
-            / ident() 
-        
+            / ident()
+
+        rule exp() -> () = precedence! {
+            x:@ (_ "<==>" _) y:(@) {}
+            --
+            x:@ (_ "==>" _) y:(@) {}
+            --
+            x:@ (_ "--*" _) y:(@) {}
+            --
+            x:@ (_ "||" _) y:(@) {}
+            --
+            x:@ (_ "&&" _) y:(@) {}
+            --
+            x:@ (_ "!=" _) y:(@) {}
+            x:@ (_ "==" _) y:(@) {}
+            --
+            x:@ (_ "<=" _) y:(@) {}
+            x:@ (_ ">=" _) y:(@) {}
+            x:@ (_ ">" _) y:(@) {}
+            x:@ (_ "<" _) y:(@) {}
+            x:@ (_ "in" _) y:(@) {}
+            --
+            x:(@) (_ "-" _) y:@ {}
+            x:(@) (_ "+" _) y:@ {}
+            x:(@) (_ "++" _) y:@ {}
+            x:(@) (_ "union" _) y:@ {}
+            x:(@) (_ "setminus" _) y:@ {}
+            x:(@) (_ "intersection" _) y:@ {}
+            x:(@) (_ "subset" _) y:@ {}
+            --
+            x:(@) (_ "*" _) y:@ {}
+            x:(@) (_ "/" _) y:@ {}
+            x:(@) (_ "%" _) y:@ {}
+            x:(@) (_ "\\" _) y:@ {}
+            --
+            x:@ ("." ident()) {}
+            --
+            atom() {}
+        }
 
         rule paren_list<R>(r : rule<R>) -> () = "(" _ r() ** comma() _ ")" { () }
- 
+
         /// Statements
 
         rule block() = "{" _ statement() ** _ _ "}"
-        
+
         rule statement()
             = "assert" _ exp()
             / "refute" _ exp()
@@ -142,12 +187,12 @@ peg::parser! {
             / fresh_statement()
             / constraining_block()
             / block()
-        
+
         rule semi() = _ ";" _
 
         rule while_statement() = "while" _ exp() _ invariant() ** semi() _ "do" _ block()
 
-        rule invariant() = "invariant" _ exp() 
+        rule invariant() = "invariant" _ exp()
 
         rule if_statement() = "if" _ "(" _ exp() _ ")" _ block() _ ("elsif" _ "(" _ exp() _ ")" _ block() _)** _ _ ("else" _ block())?
 
@@ -164,15 +209,15 @@ peg::parser! {
 
         rule constraining_block() = "constraining" _ "(" _ ident() ++ comma() _ ")" _ block()
 
-        /// Declarations 
-    
-        rule sil_program() = declaration() ** _
+        /// Declarations
+
+        pub rule sil_program() = _ declaration() ** _ _
 
         rule declaration() = import() / define() / domain() / field() / function() / predicate() / method() / adt()
 
         rule import() = "import" _ ("<" _ relative_path() _ ">" / "\"" _ relative_path() _ "\"")
-            
-        rule define() = "define" _ ident() _ "(" _ ident() ** comma() _ ")" _ expression_or_block() 
+
+        rule define() = "define" _ ident() _ "(" _ ident() ** comma() _ ")" _ expression_or_block()
 
         rule expression_or_block() = exp() / block()
 
@@ -191,11 +236,11 @@ peg::parser! {
 
         rule func_interpretation() = "interpretation" _ string_lit()
 
-        rule field() = "field" _ ident() _ ":" _ type_()       
+        rule field() = "field" _ ident() _ ":" _ type_()
 
         rule function() = function_signature() _ (precondition() / decreases())** _ _ (postcondition() / decreases()) ** _  _ block()?
-    
-        rule predicate() = "predicate" _ ident() _ paren_list(<formal_arg()>) _ block()
+
+        rule predicate() = "predicate" _ ident() _ paren_list(<formal_arg()>) _ "{" _ exp() _ "}"
 
         rule method() = "method" _ ident() _ paren_list(<formal_arg()>) _ (precondition() / decreases())** _ _ (postcondition() / decreases()) ** _ _ block()
 
@@ -217,7 +262,7 @@ peg::parser! {
 
         rule decreases() = "decreases" _ exp()
 
-        
+
 
     }
 }
