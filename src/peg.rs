@@ -215,6 +215,7 @@ peg::parser! {
                 None => IndexOp::LowerBound(e)
             } }
             / e:exp() _ ":=" _ f:exp() { IndexOp::Assign(e, f) }
+            / e:exp() { IndexOp::Index(e) }
 
         /// Statements
 
@@ -367,7 +368,7 @@ peg::parser! {
 
         rule decreases() -> Decreases = "decreases" _ d:decreases_kind()? _ e:("if" _ e:exp() { e })? { Decreases { kind: d, guard: e } }
 
-        rule decreases_kind() -> DecreasesKind = "*" { DecreasesKind::Star } / "_" { DecreasesKind::Underscore } / e:exp() { DecreasesKind::Exp(e) }
+        rule decreases_kind() -> DecreasesKind = "*" { DecreasesKind::Star } / "_" { DecreasesKind::Underscore } / e:(exp() ** comma()) { DecreasesKind::Exp(e) }
 
         rule contract() -> Contract =
             pres:(p:(precondition()  / d:decreases() { PrePostDec::Decreases(d) }) opt_semi() {p})* _ post:(p:(postcondition() / d:decreases() { PrePostDec::Decreases(d) } ) opt_semi() {p})*
@@ -410,7 +411,7 @@ pub struct Decreases {
 enum DecreasesKind {
     Star,
     Underscore,
-    Exp(Exp),
+    Exp(Vec<Exp>),
 }
 
 pub struct Ident(pub String);
@@ -573,12 +574,12 @@ pub enum Statement {
     Fresh(Vec<Ident>),
     Constraining(Vec<Ident>, Block),
     Block(Block),
-    New(Ident, StarOrNames)
+    New(Ident, StarOrNames),
 }
 
 pub enum StarOrNames {
     Star,
-    Names(Vec<Ident>)
+    Names(Vec<Ident>),
 }
 
 enum IndexOp {
