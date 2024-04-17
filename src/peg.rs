@@ -311,7 +311,7 @@ peg::parser! {
             name:ident() _
             params:(bracketed(<ident()>))? _
             interp:domain_interpretation()? _
-            elements:braced(<annotated(<domain_element()>)>)
+            "{" _ elements:(annotated(<domain_element()>) ** _) _ "}"
         { Domain { name, interpretation: interp.unwrap_or_default(), elements } }
 
         rule domain_interpretation() -> Vec<(Ident, String)> = "interpretation" _ rs:tupled(<interpretation_elt()>) { rs }
