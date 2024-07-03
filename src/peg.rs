@@ -30,6 +30,10 @@ peg::parser! {
             = quiet! { !(reserved() white_space()) n:$(start_char() char()*) { Ident(n.to_string())} }
             / expected!("identifier")
 
+        rule label() -> Ident
+            = quiet! {  n:$(start_char() char()*) { Ident(n.to_string())} }
+            / expected!("label")
+
         rule kw<R>(r: rule<R>) -> () = r() !char()
 
         rule integer() -> () = "-"? ['0'..='9']+
@@ -233,8 +237,8 @@ peg::parser! {
             / kw(<"exhale">) _ e:exp() { Statement::Exhale(e)}
             / kw(<"fold">) _ a:acc_exp() { Statement::Fold(a)}
             / kw(<"unfold">) _ a:acc_exp() { Statement::Unfold(a)}
-            / kw(<"goto">) _ id:ident() { Statement::Goto(id)}
-            / kw(<"label">) _ id:ident() _ invs:(invariant() ** _) { Statement::Label(id, invs)}
+            / kw(<"goto">) _ id:label() { Statement::Goto(id)}
+            / kw(<"label">) _ id:label() _ invs:(invariant() ** _) { Statement::Label(id, invs)}
             / kw(<"havoc">) _ l:loc_access() { Statement::Havoc(l)}
             / kw(<"quasihavoc">) _ a:(e:exp() _ "==>" {e})? _ b:exp() { Statement::QuasiHavoc(a, b)}
             / kw(<"quasihavocall">) _ args:(formal_arg() ++ _) _ "::" _ a:(e:exp() _ "==>" {e})? _ b:exp() { Statement::QuasiHavocAll(args, a, b)}
@@ -291,7 +295,8 @@ peg::parser! {
 
         /// Declarations
 
-        pub rule sil_program() = _ annotated(<declaration()>) ** opt_semi() _
+        pub rule sil_program() -> Vec<Declaration> = _ decls:annotated(<declaration()>) ** opt_semi() _ 
+            { decls }
 
         rule declaration() -> Declaration
             = i:import() { Declaration::Import(i) }
