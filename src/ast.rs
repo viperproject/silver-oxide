@@ -1,22 +1,27 @@
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PrePostDec {
     Pre(Exp),
     Post(Exp),
     Decreases(Decreases),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Decreases {
     pub kind: Option<DecreasesKind>,
     pub guard: Option<Exp>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DecreasesKind {
     Star,
     Underscore,
     Exp(Vec<Exp>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Ident(pub String);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Declaration {
     Import(Import),
     Define(Define),
@@ -28,30 +33,37 @@ pub enum Declaration {
     Adt(Adt),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Axiom {
     pub name: Option<Ident>,
     pub exp: Exp,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Import {
     pub path: String,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Define {
     pub name: Ident,
     pub args: Vec<Ident>,
     pub body: ExpOrBlock,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExpOrBlock {
     Exp(()),
     Block(()),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ArgOrType {
     Arg((Ident, Type)),
     Type(Type),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Exp {
     True,
     False,
@@ -91,6 +103,7 @@ pub enum Exp {
     InhaleExhale(Box<Exp>, Box<Exp>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SetConstructor {
     Empty(Type),
     NonEmpty(Vec<Exp>),
@@ -98,22 +111,26 @@ pub enum SetConstructor {
     MultisetNonEmpty(Vec<Exp>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SeqConstructor {
     Empty(Type),
     NonEmpty(Vec<Exp>),
     Range(Box<Exp>, Box<Exp>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MapConstructor {
     Empty(Type, Type),
     NonEmpty(Vec<(Exp, Exp)>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AccExp {
     Acc(LocAccess, Option<Exp>),
     PredicateAccess(Exp),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinOp {
     Implies,
     Iff,
@@ -140,19 +157,23 @@ pub enum BinOp {
     MagicWand,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Trigger {
     pub exp: Vec<Exp>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ResAccess {
     Loc(LocAccess),
     Exp(Exp),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Block {
     pub statements: Vec<Statement>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Statement {
     Assert(Exp),
     Refute(Exp),
@@ -179,11 +200,13 @@ pub enum Statement {
     New(Ident, StarOrNames),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum StarOrNames {
     Star,
     Names(Vec<Ident>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IndexOp {
     Index(Exp),
     LowerBound(Exp),
@@ -192,56 +215,67 @@ pub enum IndexOp {
     Assign(Exp, Exp),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Invariant(pub Exp);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WhileSpec {
     Inv(Invariant),
     Dec(Decreases),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LocAccess {
     pub loc: Exp,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Field {
     pub fields: Vec<(Ident, Type)>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Domain {
     pub name: Ident,
     pub interpretation: Vec<(Ident, String)>,
     pub elements: Vec<DomainElement>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub signature: Signature,
     pub contract: Contract,
     pub body: Option<Exp>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Contract {
     pub preconditions: Vec<Exp>,
     pub postconditions: Vec<Exp>,
     pub decreases: Vec<Decreases>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DomainElement {
     DomainFunction(DomainFunction),
     Axiom(Axiom),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DomainFunction {
     pub unique: bool,
     pub signature: Signature,
     pub interpretation: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Signature {
     pub name: Ident,
     pub args: Vec<ArgOrType>,
     pub ret: Vec<ArgOrType>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Int,
     Bool,
@@ -254,17 +288,20 @@ pub enum Type {
     User(Ident, Vec<Type>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Predicate {
     pub signature: Signature,
     pub body: Option<Exp>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Method {
     pub signature: Signature,
     pub contract: Contract,
     pub body: Option<Block>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Adt {
     pub name: Ident,
     pub args: Vec<Type>,
@@ -272,6 +309,7 @@ pub struct Adt {
     pub derives: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Variant {
     pub name: Ident,
     pub fields: Vec<(Ident, Type)>,
