@@ -67,7 +67,7 @@ pub enum ArgOrType {
 pub enum Exp {
     True,
     False,
-    Int,
+    Int(i128),
     Null,
     Result,
     At(Ident, Box<Exp>),

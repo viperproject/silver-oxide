@@ -36,7 +36,7 @@ peg::parser! {
 
         rule kw<R>(r: rule<R>) -> () = r() !char()
 
-        rule integer() -> () = "-"? ['0'..='9']+
+        rule integer() -> i128 = s:$("-"? ['0'..='9']+) {? s.parse().or(Err("invalid integer")) }
 
         rule comma() = _ "," _
 
@@ -119,7 +119,7 @@ peg::parser! {
 
         rule atom() -> Exp
             = kw(<"true">) { Exp::True } / kw(<"false">) { Exp::False }
-            / integer() { Exp::Int }
+            / i:integer() { Exp::Int(i) }
             / kw(<"null">) { Exp::Null }
             / kw(<"result">) { Exp::Result }
             / "(" _ e:exp() _ ty:(":" _ ty:type_() { ty })? _ ")" { match ty {
