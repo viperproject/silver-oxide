@@ -79,27 +79,49 @@ pub enum Exp {
     Wildcard,
     Ascribe(Box<Exp>, Type),
     Perm(Box<LocAccess>),
+    /// unfolding(e) in E
     Unfolding(Box<AccExp>, Box<Exp>),
+    /// folding(e) in E
     Folding(Box<AccExp>, Box<Exp>),
+    /// appling(w) in E
     Applying(Box<Exp>, Box<Exp>),
+    /// packaging(w) in E
     Packaging(Box<Exp>, Box<Exp>),
+    /// forall x: T, y: U, ... :: { trigger } e
     Forall(Vec<(Ident, Type)>, Vec<Trigger>, Box<Exp>),
+    /// exists x: T, y: U, ... :: { trigger } e
     Exists(Vec<(Ident, Type)>, Vec<Trigger>, Box<Exp>),
+    /// Sequence literals. 
     SeqConstructor(SeqConstructor),
+    /// Set literals.
     SetConstructor(SetConstructor),
+    /// Map literals.
     MapConstructor(MapConstructor),
+    /// Absolute value |e|
     Abs(Box<Exp>),
+    /// let x = e1 in e2
     LetIn(Ident, Box<Exp>, Box<Exp>),
+    /// Quantified permissions. forperm x: T, y: U, ... [Perm] :: e1
     ForPerm(Vec<(Ident, Type)>, Box<ResAccess>, Box<Exp>),
+    /// acc(e)
     Acc(Box<AccExp>),
+    /// f(e1, e2, ..., en)
     FuncApp(Box<Exp>, Vec<Exp>),
+    /// x
     Ident(Ident),
+    /// e1 op e2
     BinOp(BinOp, Box<Exp>, Box<Exp>),
+    /// c ? e1 : e2 
     Ternary(Box<Exp>, Box<Exp>, Box<Exp>),
+    /// e.f
     Field(Box<Exp>, Ident),
+    /// e[e1]
     Index(Box<Exp>, Box<IndexOp>),
+    /// - e
     Neg(Box<Exp>),
+    /// ! e
     Not(Box<Exp>),
+    /// Inhale-Exhale expressions [e1, e2]
     InhaleExhale(Box<Exp>, Box<Exp>),
 }
 
