@@ -36,7 +36,7 @@ peg::parser! {
 
         rule kw<R>(r: rule<R>) -> () = r() !char()
 
-        rule integer() -> i128 = s:$("-"? ['0'..='9']+) {? s.parse().or(Err("invalid integer")) }
+        rule integer() -> num_bigint::BigInt = s:$("-"? ['0'..='9']+) {? s.parse().or(Err("invalid integer")) }
 
         rule comma() = _ "," _
 
@@ -115,12 +115,12 @@ peg::parser! {
 
         rule magic_wand_exp() -> Exp = exp()
 
-        rule func_app() -> Exp = id:ident() (" ")* "(" _ es:(exp() ** comma()) _ ")" { Exp::FuncApp(Box::new(Exp::Ident(id)), es) }
+        rule func_app() -> Exp = id:ident() (" ")* "(" _ es:(exp() ** comma()) _ ")" { Exp::FuncApp(id, es) }
 
         rule atom() -> Exp
-            = kw(<"true">) { Exp::True } / kw(<"false">) { Exp::False }
-            / i:integer() { Exp::Int(i) }
-            / kw(<"null">) { Exp::Null }
+            = kw(<"true">) { Exp::Const(Const::True) } / kw(<"false">) { Exp::Const(Const::False) }
+            / i:integer() { Exp::Const(Const::Int(i)) }
+            / kw(<"null">) { Exp::Const(Const::Null) }
             / kw(<"result">) { Exp::Result }
             / "(" _ e:exp() _ ty:(":" _ ty:type_() { ty })? _ ")" { match ty {
                 Some(ty) => Exp::Ascribe(Box::new(e), ty),
@@ -130,10 +130,10 @@ peg::parser! {
             / kw(<"old">) _ i:("[" _ i:ident() _ "]" {i})? _ "(" _ e:exp() _ ")" { Exp::Old(i, Box::new(e)) }
             / "[" _ i:ident() _ "]" _ "(" _ e:exp() _ ")" { Exp::At(i, Box::new(e)) }
             / kw(<"lhs">) _ "(" _ e:exp() _ ")" { Exp::Lhs(Box::new(e)) }
-            / kw(<"none">) { Exp::None }
-            / kw(<"write">) { Exp::Write }
-            / kw(<"epsilon">) { Exp::Epsilon}
-            / kw(<"wildcard">) { Exp::Wildcard }
+            / kw(<"none">) { Exp::Const(Const::None) }
+            / kw(<"write">) { Exp::Const(Const::Write) }
+            / kw(<"epsilon">) { Exp::Const(Const::Epsilon) }
+            / kw(<"wildcard">) { Exp::Const(Const::Wildcard) }
             / kw(<"perm">) _ "(" _ l:loc_access() _ ")" { Exp::Perm(Box::new(l)) }
             / "[" _ e:exp() _ "," _ f:exp() _ "]" { Exp::InhaleExhale(Box::new(e), Box::new(f))}
 

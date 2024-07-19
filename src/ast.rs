@@ -18,7 +18,7 @@ pub enum DecreasesKind {
     Exp(Vec<Exp>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ident(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -65,18 +65,11 @@ pub enum ArgOrType {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Exp {
-    True,
-    False,
-    Int(i128),
-    Null,
+    Const(Const),
     Result,
     At(Ident, Box<Exp>),
     Old(Option<Ident>, Box<Exp>),
     Lhs(Box<Exp>),
-    None,
-    Write,
-    Epsilon,
-    Wildcard,
     Ascribe(Box<Exp>, Type),
     Perm(Box<LocAccess>),
     /// unfolding(e) in E
@@ -106,7 +99,7 @@ pub enum Exp {
     /// acc(e)
     Acc(Box<AccExp>),
     /// f(e1, e2, ..., en)
-    FuncApp(Box<Exp>, Vec<Exp>),
+    FuncApp(Ident, Vec<Exp>),
     /// x
     Ident(Ident),
     /// e1 op e2
@@ -123,6 +116,18 @@ pub enum Exp {
     Not(Box<Exp>),
     /// Inhale-Exhale expressions [e1, e2]
     InhaleExhale(Box<Exp>, Box<Exp>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Const {
+    True,
+    False,
+    Int(num_bigint::BigInt),
+    Null,
+    None,
+    Write,
+    Epsilon,
+    Wildcard,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -152,7 +157,7 @@ pub enum AccExp {
     PredicateAccess(Exp),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinOp {
     Implies,
     Iff,
