@@ -291,11 +291,11 @@ peg::parser! {
 
         rule constraining_block() -> () = "constraining" _ "(" _ ident() ++ comma() _ ")" _ block()
 
-        rule expression_or_block() -> ExpOrBlock = exp()  { ExpOrBlock::Exp(()) } / block() { ExpOrBlock::Block(()) }
+        rule expression_or_block() -> ExpOrBlock = e:exp()  { ExpOrBlock::Exp(e) } / b:block() { ExpOrBlock::Block(b) }
 
         /// Declarations
 
-        pub rule sil_program() -> Vec<Declaration> = _ decls:annotated(<declaration()>) ** opt_semi() _ 
+        pub rule sil_program() -> Vec<Declaration> = _ decls:annotated(<declaration()>) ** opt_semi() _
             { decls }
 
         rule declaration() -> Declaration

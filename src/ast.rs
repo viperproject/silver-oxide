@@ -53,8 +53,8 @@ pub struct Define {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExpOrBlock {
-    Exp(()),
-    Block(()),
+    Exp(Exp),
+    Block(Block),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
