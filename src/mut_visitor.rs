@@ -8,24 +8,24 @@ use crate::ast::*;
 /// To implement a visitor, implement the relevant methods, handle the cases of interest
 /// and call the appropriate `super_mut_visit_*` method to recursively traverse the type.
 pub trait MutVisitor: Sized {
-    fn mut_visit_exp(&mut self, exp: &Exp) {
+    fn mut_visit_exp(&mut self, exp: &mut Exp) {
         super_mut_visit_exp(self, exp)
     }
 
-    fn mut_visit_type(&mut self, ty: &Type) {
+    fn mut_visit_type(&mut self, ty: &mut Type) {
         super_mut_visit_type(self, ty)
     }
 
-    fn mut_visit_statement(&mut self, stmt: &Statement) {
+    fn mut_visit_statement(&mut self, stmt: &mut Statement) {
         super_mut_visit_statement(self, stmt)
     }
 
-    fn mut_visit_declaration(&mut self, decl: &Declaration) {
+    fn mut_visit_declaration(&mut self, decl: &mut Declaration) {
         super_mut_visit_declaration(self, decl)
     }
 }
 
-pub fn super_mut_visit_exp<V: MutVisitor>(v: &mut V, exp: &Exp) {
+pub fn super_mut_visit_exp<V: MutVisitor>(v: &mut V, exp: &mut Exp) {
     match exp {
         Exp::True => (),
         Exp::False => (),
@@ -124,13 +124,13 @@ pub fn super_mut_visit_exp<V: MutVisitor>(v: &mut V, exp: &Exp) {
     }
 }
 
-pub fn super_mut_visit_trigger<V: MutVisitor>(v: &mut V, trigger: &Trigger) {
-    for exp in &trigger.exp {
+pub fn super_mut_visit_trigger<V: MutVisitor>(v: &mut V, trigger: &mut Trigger) {
+    for exp in &mut trigger.exp {
         v.mut_visit_exp(exp);
     }
 }
 
-pub fn super_mut_visit_index_op<V: MutVisitor>(v: &mut V, index_op: &IndexOp) {
+pub fn super_mut_visit_index_op<V: MutVisitor>(v: &mut V, index_op: &mut IndexOp) {
     match index_op {
         IndexOp::Index(e) | IndexOp::LowerBound(e) | IndexOp::UpperBound(e) => v.mut_visit_exp(e),
         IndexOp::Range(e1, e2) | IndexOp::Assign(e1, e2) => {
@@ -140,7 +140,10 @@ pub fn super_mut_visit_index_op<V: MutVisitor>(v: &mut V, index_op: &IndexOp) {
     }
 }
 
-pub fn super_mut_visit_set_constructor<V: MutVisitor>(v: &mut V, set_constructor: &SetConstructor) {
+pub fn super_mut_visit_set_constructor<V: MutVisitor>(
+    v: &mut V,
+    set_constructor: &mut SetConstructor,
+) {
     match set_constructor {
         SetConstructor::Empty(t) | SetConstructor::MultisetEmpty(t) => v.mut_visit_type(t),
         SetConstructor::NonEmpty(exps) | SetConstructor::MultisetNonEmpty(exps) => {
@@ -151,7 +154,10 @@ pub fn super_mut_visit_set_constructor<V: MutVisitor>(v: &mut V, set_constructor
     }
 }
 
-pub fn super_mut_visit_seq_constructor<V: MutVisitor>(v: &mut V, seq_constructor: &SeqConstructor) {
+pub fn super_mut_visit_seq_constructor<V: MutVisitor>(
+    v: &mut V,
+    seq_constructor: &mut SeqConstructor,
+) {
     match seq_constructor {
         SeqConstructor::Empty(t) => v.mut_visit_type(t),
         SeqConstructor::NonEmpty(exps) => {
@@ -166,7 +172,10 @@ pub fn super_mut_visit_seq_constructor<V: MutVisitor>(v: &mut V, seq_constructor
     }
 }
 
-pub fn super_mut_visit_map_constructor<V: MutVisitor>(v: &mut V, map_constructor: &MapConstructor) {
+pub fn super_mut_visit_map_constructor<V: MutVisitor>(
+    v: &mut V,
+    map_constructor: &mut MapConstructor,
+) {
     match map_constructor {
         MapConstructor::Empty(t1, t2) => {
             v.mut_visit_type(t1);
@@ -181,7 +190,7 @@ pub fn super_mut_visit_map_constructor<V: MutVisitor>(v: &mut V, map_constructor
     }
 }
 
-pub fn super_mut_visit_acc_exp<V: MutVisitor>(v: &mut V, acc_exp: &AccExp) {
+pub fn super_mut_visit_acc_exp<V: MutVisitor>(v: &mut V, acc_exp: &mut AccExp) {
     match acc_exp {
         AccExp::Acc(loc_access, exp_opt) => {
             super_mut_visit_loc_access(v, loc_access);
@@ -193,28 +202,28 @@ pub fn super_mut_visit_acc_exp<V: MutVisitor>(v: &mut V, acc_exp: &AccExp) {
     }
 }
 
-pub fn super_mut_visit_res_access<V: MutVisitor>(v: &mut V, res_access: &ResAccess) {
+pub fn super_mut_visit_res_access<V: MutVisitor>(v: &mut V, res_access: &mut ResAccess) {
     match res_access {
         ResAccess::Loc(loc_access) => super_mut_visit_loc_access(v, loc_access),
         ResAccess::Exp(exp) => v.mut_visit_exp(exp),
     }
 }
 
-pub fn super_mut_visit_block<V: MutVisitor>(v: &mut V, block: &Block) {
-    for statement in &block.statements {
+pub fn super_mut_visit_block<V: MutVisitor>(v: &mut V, block: &mut Block) {
+    for statement in &mut block.statements {
         v.mut_visit_statement(statement);
     }
 }
 
-pub fn super_mut_visit_invariant<V: MutVisitor>(v: &mut V, invariant: &Invariant) {
-    v.mut_visit_exp(&invariant.0);
+pub fn super_mut_visit_invariant<V: MutVisitor>(v: &mut V, invariant: &mut Invariant) {
+    v.mut_visit_exp(&mut invariant.0);
 }
 
-pub fn super_mut_visit_loc_access<V: MutVisitor>(v: &mut V, loc_access: &LocAccess) {
-    v.mut_visit_exp(&loc_access.loc);
+pub fn super_mut_visit_loc_access<V: MutVisitor>(v: &mut V, loc_access: &mut LocAccess) {
+    v.mut_visit_exp(&mut loc_access.loc);
 }
 
-pub fn super_mut_visit_declaration<V: MutVisitor>(v: &mut V, decl: &Declaration) {
+pub fn super_mut_visit_declaration<V: MutVisitor>(v: &mut V, decl: &mut Declaration) {
     match decl {
         Declaration::Import(_) => (),
         Declaration::Define(define) => super_mut_visit_define(v, define),
@@ -227,126 +236,129 @@ pub fn super_mut_visit_declaration<V: MutVisitor>(v: &mut V, decl: &Declaration)
     }
 }
 
-pub fn super_mut_visit_exp_or_block<V: MutVisitor>(v: &mut V, exp_or_block: &ExpOrBlock) {
+pub fn super_mut_visit_exp_or_block<V: MutVisitor>(v: &mut V, exp_or_block: &mut ExpOrBlock) {
     match exp_or_block {
         ExpOrBlock::Exp(exp) => v.mut_visit_exp(exp),
         ExpOrBlock::Block(block) => super_mut_visit_block(v, block),
     }
 }
 
-pub fn super_mut_visit_define<V: MutVisitor>(v: &mut V, define: &Define) {
-    super_mut_visit_exp_or_block(v, &define.body);
+pub fn super_mut_visit_define<V: MutVisitor>(v: &mut V, define: &mut Define) {
+    super_mut_visit_exp_or_block(v, &mut define.body);
 }
 
-pub fn super_mut_visit_domain<V: MutVisitor>(v: &mut V, domain: &Domain) {
-    for element in &domain.elements {
+pub fn super_mut_visit_domain<V: MutVisitor>(v: &mut V, domain: &mut Domain) {
+    for element in &mut domain.elements {
         super_mut_visit_domain_element(v, element);
     }
 }
 
-pub fn super_mut_visit_field<V: MutVisitor>(v: &mut V, field: &Field) {
-    for (_, ty) in &field.fields {
+pub fn super_mut_visit_field<V: MutVisitor>(v: &mut V, field: &mut Field) {
+    for (_, ty) in &mut field.fields {
         v.mut_visit_type(ty);
     }
 }
 
-pub fn super_mut_visit_function<V: MutVisitor>(v: &mut V, function: &Function) {
-    super_mut_visit_signature(v, &function.signature);
-    super_mut_visit_contract(v, &function.contract);
-    if let Some(body) = &function.body {
+pub fn super_mut_visit_function<V: MutVisitor>(v: &mut V, function: &mut Function) {
+    super_mut_visit_signature(v, &mut function.signature);
+    super_mut_visit_contract(v, &mut function.contract);
+    if let Some(body) = &mut function.body {
         v.mut_visit_exp(body);
     }
 }
 
-pub fn super_mut_visit_predicate<V: MutVisitor>(v: &mut V, predicate: &Predicate) {
-    super_mut_visit_signature(v, &predicate.signature);
-    if let Some(body) = &predicate.body {
+pub fn super_mut_visit_predicate<V: MutVisitor>(v: &mut V, predicate: &mut Predicate) {
+    super_mut_visit_signature(v, &mut predicate.signature);
+    if let Some(body) = &mut predicate.body {
         v.mut_visit_exp(body);
     }
 }
 
-pub fn super_mut_visit_method<V: MutVisitor>(v: &mut V, method: &Method) {
-    super_mut_visit_signature(v, &method.signature);
-    super_mut_visit_contract(v, &method.contract);
-    if let Some(body) = &method.body {
+pub fn super_mut_visit_method<V: MutVisitor>(v: &mut V, method: &mut Method) {
+    super_mut_visit_signature(v, &mut method.signature);
+    super_mut_visit_contract(v, &mut method.contract);
+    if let Some(body) = &mut method.body {
         super_mut_visit_block(v, body);
     }
 }
 
-pub fn super_mut_visit_adt<V: MutVisitor>(v: &mut V, adt: &Adt) {
-    for arg in &adt.args {
+pub fn super_mut_visit_adt<V: MutVisitor>(v: &mut V, adt: &mut Adt) {
+    for arg in &mut adt.args {
         v.mut_visit_type(arg);
     }
-    for variant in &adt.variants {
+    for variant in &mut adt.variants {
         super_mut_visit_variant(v, variant);
     }
 }
 
-pub fn super_mut_visit_domain_element<V: MutVisitor>(v: &mut V, element: &DomainElement) {
+pub fn super_mut_visit_domain_element<V: MutVisitor>(v: &mut V, element: &mut DomainElement) {
     match element {
         DomainElement::DomainFunction(domain_function) => {
-            super_mut_visit_signature(v, &domain_function.signature)
+            super_mut_visit_signature(v, &mut domain_function.signature)
         }
-        DomainElement::Axiom(axiom) => v.mut_visit_exp(&axiom.exp),
+        DomainElement::Axiom(axiom) => v.mut_visit_exp(&mut axiom.exp),
     }
 }
 
-pub fn super_mut_visit_domain_function<V: MutVisitor>(v: &mut V, domain_function: &DomainFunction) {
-    super_mut_visit_signature(v, &domain_function.signature);
+pub fn super_mut_visit_domain_function<V: MutVisitor>(
+    v: &mut V,
+    domain_function: &mut DomainFunction,
+) {
+    super_mut_visit_signature(v, &mut domain_function.signature);
 }
 
-pub fn super_mut_visit_arg_or_type<V: MutVisitor>(v: &mut V, arg_or_type: &ArgOrType) {
+pub fn super_mut_visit_arg_or_type<V: MutVisitor>(v: &mut V, arg_or_type: &mut ArgOrType) {
     match arg_or_type {
         ArgOrType::Arg((_, ty)) | ArgOrType::Type(ty) => v.mut_visit_type(ty),
     }
 }
 
-pub fn super_mut_visit_contract<V: MutVisitor>(v: &mut V, contract: &Contract) {
-    for precondition in &contract.preconditions {
+pub fn super_mut_visit_contract<V: MutVisitor>(v: &mut V, contract: &mut Contract) {
+    for precondition in &mut contract.preconditions {
         v.mut_visit_exp(precondition);
     }
-    for postcondition in &contract.postconditions {
+    for postcondition in &mut contract.postconditions {
         v.mut_visit_exp(postcondition);
     }
-    for decreases in &contract.decreases {
+    for decreases in &mut contract.decreases {
         super_mut_visit_decreases(v, decreases);
     }
 }
-pub fn super_mut_visit_decreases<V: MutVisitor>(v: &mut V, decreases: &Decreases) {
-    if let Some(DecreasesKind::Exp(exps)) = &decreases.kind {
+pub fn super_mut_visit_decreases<V: MutVisitor>(v: &mut V, decreases: &mut Decreases) {
+    if let Some(DecreasesKind::Exp(exps)) = &mut decreases.kind {
         for exp in exps {
             v.mut_visit_exp(exp);
         }
     }
-    if let Some(guard) = &decreases.guard {
+    if let Some(guard) = &mut decreases.guard {
         v.mut_visit_exp(guard);
     }
 }
 
-pub fn super_mut_visit_signature<V: MutVisitor>(v: &mut V, signature: &Signature) {
-    for arg in &signature.args {
+pub fn super_mut_visit_signature<V: MutVisitor>(v: &mut V, signature: &mut Signature) {
+    for arg in &mut signature.args {
         super_mut_visit_arg_or_type(v, arg);
     }
-    for ret in &signature.ret {
+    for ret in &mut signature.ret {
         super_mut_visit_arg_or_type(v, ret);
     }
 }
 
-pub fn super_mut_visit_variant<V: MutVisitor>(v: &mut V, variant: &Variant) {
-    for (_, ty) in &variant.fields {
+pub fn super_mut_visit_variant<V: MutVisitor>(v: &mut V, variant: &mut Variant) {
+    for (_, ty) in &mut variant.fields {
         v.mut_visit_type(ty);
     }
 }
 
-pub fn super_mut_visit_while_spec<V: MutVisitor>(v: &mut V, while_spec: &WhileSpec) {
+pub fn super_mut_visit_while_spec<V: MutVisitor>(v: &mut V, while_spec: &mut WhileSpec) {
     match while_spec {
-        WhileSpec::Inv(invariant) => v.mut_visit_exp(&invariant.0),
+        WhileSpec::Inv(invariant) => v.mut_visit_exp(&mut invariant.0),
 
         WhileSpec::Dec(decreases) => super_mut_visit_decreases(v, decreases),
     }
 }
 
-pub fn super_mut_visit_statement<V: MutVisitor>(v: &mut V, stmt: &Statement) {
+pub fn super_mut_visit_statement<V: MutVisitor>(v: &mut V, stmt: &mut Statement) {
     match stmt {
         Statement::Assert(exp)
         | Statement::Refute(exp)
@@ -429,7 +441,7 @@ pub fn super_mut_visit_statement<V: MutVisitor>(v: &mut V, stmt: &Statement) {
     }
 }
 
-pub fn super_mut_visit_type<V: MutVisitor>(v: &mut V, ty: &Type) {
+pub fn super_mut_visit_type<V: MutVisitor>(v: &mut V, ty: &mut Type) {
     match ty {
         Type::Int | Type::Bool | Type::Perm | Type::Ref | Type::Rational => {
             // These are primitive types, so we don't need to visit anything

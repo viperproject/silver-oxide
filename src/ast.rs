@@ -91,7 +91,7 @@ pub enum Exp {
     Forall(Vec<(Ident, Type)>, Vec<Trigger>, Box<Exp>),
     /// exists x: T, y: U, ... :: { trigger } e
     Exists(Vec<(Ident, Type)>, Vec<Trigger>, Box<Exp>),
-    /// Sequence literals. 
+    /// Sequence literals.
     SeqConstructor(SeqConstructor),
     /// Set literals.
     SetConstructor(SetConstructor),
@@ -111,7 +111,7 @@ pub enum Exp {
     Ident(Ident),
     /// e1 op e2
     BinOp(BinOp, Box<Exp>, Box<Exp>),
-    /// c ? e1 : e2 
+    /// c ? e1 : e2
     Ternary(Box<Exp>, Box<Exp>, Box<Exp>),
     /// e.f
     Field(Box<Exp>, Ident),
