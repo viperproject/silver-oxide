@@ -82,10 +82,8 @@ peg::parser! {
 
         rule res_access() -> ResAccess = e:magic_wand_exp() { ResAccess::Exp(e) } / l:loc_access() { ResAccess::Loc(l) }
 
-        // acc_exp = { "acc"~"("~loc_access~(","~exp)?~")" | predicate_access }
         rule acc_exp() -> AccExp
-            = "acc" _ "(" _ l:loc_access() _ e:("," _ e:exp() { e })? _ ")" { AccExp::Acc(l, e)}
-            / p:predicate_access() { AccExp::PredicateAccess(p) }
+            = "acc" _ "(" _ acc:loc_access() _ perm:("," _ e:exp() { e })? _ ")" { AccExp { acc, perm } }
 
         rule trigger() -> Trigger = "{" _ es:(exp() ** comma()) _ "}" { Trigger { exp: es } }
 
@@ -118,7 +116,7 @@ peg::parser! {
         rule func_app() -> Exp = id:ident() (" ")* "(" _ es:(exp() ** comma()) _ ")" { Exp::FuncApp(id, es) }
 
         rule atom() -> Exp
-            = kw(<"true">) { Exp::Const(Const::True) } / kw(<"false">) { Exp::Const(Const::False) }
+            = kw(<"true">) { Exp::Const(Const::Bool(true)) } / kw(<"false">) { Exp::Const(Const::Bool(false)) }
             / i:integer() { Exp::Const(Const::Int(i)) }
             / kw(<"null">) { Exp::Const(Const::Null) }
             / kw(<"result">) { Exp::Result }
@@ -137,8 +135,8 @@ peg::parser! {
             / kw(<"perm">) _ "(" _ l:loc_access() _ ")" { Exp::Perm(Box::new(l)) }
             / "[" _ e:exp() _ "," _ f:exp() _ "]" { Exp::InhaleExhale(Box::new(e), Box::new(f))}
 
-            / kw(<"unfolding">) _ acc:acc_exp() _ "in" _ e:exp() { Exp::Unfolding(Box::new(acc), Box::new(e)) }
-            / kw(<"folding">) _ acc:acc_exp() _ "in" _ e:exp() { Exp::Folding(Box::new(acc), Box::new(e)) }
+            / kw(<"unfolding">) _ acc:exp() _ "in" _ e:exp() { Exp::Unfolding(Box::new(acc), Box::new(e)) }
+            / kw(<"folding">) _ acc:exp() _ "in" _ e:exp() { Exp::Folding(Box::new(acc), Box::new(e)) }
 
             / kw(<"applying">) _ "(" _ mwexp:magic_wand_exp() _ ")" _ "in" _ e:exp() { Exp::Applying(Box::new(mwexp), Box::new(e)) }
             / kw(<"packaging">) _ "(" _ mwexp:magic_wand_exp() _ ")" _ "in" _ e:exp() { Exp::Packaging(Box::new(mwexp), Box::new(e)) }
@@ -235,8 +233,8 @@ peg::parser! {
             / kw(<"assume">) _ e:exp() { Statement::Assume(e)}
             / kw(<"inhale">) _ e:exp() { Statement::Inhale(e)}
             / kw(<"exhale">) _ e:exp() { Statement::Exhale(e)}
-            / kw(<"fold">) _ a:acc_exp() { Statement::Fold(a)}
-            / kw(<"unfold">) _ a:acc_exp() { Statement::Unfold(a)}
+            / kw(<"fold">) _ e:exp() { Statement::Fold(e)}
+            / kw(<"unfold">) _ e:exp() { Statement::Unfold(e)}
             / kw(<"goto">) _ id:label() { Statement::Goto(id)}
             / kw(<"label">) _ id:label() _ invs:(invariant() ** _) { Statement::Label(id, invs)}
             / kw(<"havoc">) _ l:loc_access() { Statement::Havoc(l)}
@@ -291,12 +289,12 @@ peg::parser! {
 
         rule constraining_block() -> () = "constraining" _ "(" _ ident() ++ comma() _ ")" _ block()
 
-        rule expression_or_block() -> ExpOrBlock = exp()  { ExpOrBlock::Exp(()) } / block() { ExpOrBlock::Block(()) }
+        rule expression_or_block() -> ExpOrBlock = exp:exp()  { ExpOrBlock::Exp(exp) } / block:block() { ExpOrBlock::Block(block) }
 
         /// Declarations
 
-        pub rule sil_program() -> Vec<Declaration> = _ decls:annotated(<declaration()>) ** opt_semi() _ 
-            { decls }
+        pub rule sil_program() -> Program = _ decls:annotated(<declaration()>) ** opt_semi() _ 
+            { Program(decls) }
 
         rule declaration() -> Declaration
             = i:import() { Declaration::Import(i) }
@@ -380,10 +378,14 @@ peg::parser! {
         rule contract() -> Contract =
             pres:(p:(precondition()  / d:decreases() { PrePostDec::Decreases(d) }) opt_semi() {p})* _ post:(p:(postcondition() / d:decreases() { PrePostDec::Decreases(d) } ) opt_semi() {p})*
             {
-                let mut contract = Contract { preconditions: vec![], postconditions: vec![], decreases: vec![]};
+                let mut contract = Contract { precondition: None, postcondition: None, decreases: vec![] };
                 for p in pres {
                     match p {
-                        PrePostDec::Pre(e) => contract.preconditions.push(e),
+                        PrePostDec::Pre(e) => contract.precondition = Some(if let Some(pre) = contract.precondition {
+                            Exp::BinOp(BinOp::And, Box::new(pre), Box::new(e))
+                        } else {
+                            e
+                        }),
                         PrePostDec::Decreases(d) => contract.decreases.push(d),
                         _ => {}
                     }
@@ -391,7 +393,11 @@ peg::parser! {
 
                 for p in post {
                     match p {
-                        PrePostDec::Post(e) => contract.postconditions.push(e),
+                        PrePostDec::Post(e) => contract.postcondition = Some(if let Some(post) = contract.postcondition {
+                            Exp::BinOp(BinOp::And, Box::new(post), Box::new(e))
+                        } else {
+                            e
+                        }),
                         PrePostDec::Decreases(d) => contract.decreases.push(d),
                         _ => {}
                     }

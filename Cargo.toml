@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 peg = "0.8.2"
 num-bigint = "0.4.6"
+fxhash = "0.2.1"

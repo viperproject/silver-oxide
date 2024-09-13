@@ -1,4 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Program(pub Vec<Declaration>);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PrePostDec {
     Pre(Exp),
     Post(Exp),
@@ -53,8 +56,8 @@ pub struct Define {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExpOrBlock {
-    Exp(()),
-    Block(()),
+    Exp(Exp),
+    Block(Block),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -73,9 +76,9 @@ pub enum Exp {
     Ascribe(Box<Exp>, Type),
     Perm(Box<LocAccess>),
     /// unfolding(e) in E
-    Unfolding(Box<AccExp>, Box<Exp>),
+    Unfolding(Box<Exp>, Box<Exp>),
     /// folding(e) in E
-    Folding(Box<AccExp>, Box<Exp>),
+    Folding(Box<Exp>, Box<Exp>),
     /// appling(w) in E
     Applying(Box<Exp>, Box<Exp>),
     /// packaging(w) in E
@@ -120,8 +123,7 @@ pub enum Exp {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Const {
-    True,
-    False,
+    Bool(bool),
     Int(num_bigint::BigInt),
     Null,
     None,
@@ -152,9 +154,9 @@ pub enum MapConstructor {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum AccExp {
-    Acc(LocAccess, Option<Exp>),
-    PredicateAccess(Exp),
+pub struct AccExp {
+    pub acc: LocAccess,
+    pub perm: Option<Exp>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -207,8 +209,8 @@ pub enum Statement {
     Assume(Exp),
     Inhale(Exp),
     Exhale(Exp),
-    Fold(AccExp),
-    Unfold(AccExp),
+    Fold(Exp),
+    Unfold(Exp),
     Goto(Ident),
     Label(Ident, Vec<Invariant>),
     Havoc(LocAccess),
@@ -253,6 +255,7 @@ pub enum WhileSpec {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LocAccess {
+    /// Must be either `Exp::Field` or `Exp::FuncApp`.
     pub loc: Exp,
 }
 
@@ -277,8 +280,8 @@ pub struct Function {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Contract {
-    pub preconditions: Vec<Exp>,
-    pub postconditions: Vec<Exp>,
+    pub precondition: Option<Exp>,
+    pub postcondition: Option<Exp>,
     pub decreases: Vec<Decreases>,
 }
 
