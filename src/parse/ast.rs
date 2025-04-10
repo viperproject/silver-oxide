@@ -1,5 +1,7 @@
+use crate::{program::idx::LocalDefId, TiVec};
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Program(pub Vec<Declaration>);
+pub struct Program(pub(super) TiVec<LocalDefId, Declaration>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PrePostDec {
@@ -24,11 +26,15 @@ pub enum DecreasesKind {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ident(pub String);
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct IdnDecl(pub Ident);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Declaration {
     Import(Import),
     Define(Define),
     Domain(Domain),
+    DomainElement(DomainElement),
     Field(Field),
     Function(Function),
     Predicate(Predicate),
@@ -37,20 +43,33 @@ pub enum Declaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct DomainElement {
+    pub domain: Ident,
+    pub kind: DomainElementKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DomainElementKind {
+    Function(DomainFunction),
+    Axiom(Axiom),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Axiom {
-    pub name: Option<Ident>,
-    pub exp: Exp,
+    pub name: Option<IdnDecl>,
+    pub exp: ExpBlock,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Import {
     pub path: String,
+    pub local: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Define {
-    pub name: Ident,
-    pub args: Vec<Ident>,
+    pub name: IdnDecl,
+    pub args: Vec<IdnDecl>,
     pub body: ExpOrBlock,
 }
 
@@ -61,68 +80,68 @@ pub enum ExpOrBlock {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ArgOrType {
-    Arg((Ident, Type)),
-    Type(Type),
+pub struct IdnDeclTyped {
+    pub idn: IdnDecl,
+    pub ty: Type,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Exp {
-    Const(Const),
+pub enum ArgOrType {
+    Arg(IdnDeclTyped),
+    Type(Type),
+}
+
+impl ArgOrType {
+    pub fn ty(&self) -> &Type {
+        match self {
+            ArgOrType::Arg(id) => &id.ty,
+            ArgOrType::Type(ty) => ty,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExpBlock(pub Exp);
+
+pub type Exp = Box<ExpKind>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ExpKind {
+    Const(ConstKind),
     Result,
-    At(Ident, Box<Exp>),
-    Old(Option<Ident>, Box<Exp>),
-    Lhs(Box<Exp>),
-    Ascribe(Box<Exp>, Type),
-    Perm(Box<LocAccess>),
+    // At(Ident, Exp),
+    Old(Option<Ident>, Exp),
+    // Lhs(Exp),
+    Ascribe(Exp, Type),
     /// unfolding(e) in E
-    Unfolding(Box<Exp>, Box<Exp>),
-    /// folding(e) in E
-    Folding(Box<Exp>, Box<Exp>),
-    /// appling(w) in E
-    Applying(Box<Exp>, Box<Exp>),
-    /// packaging(w) in E
-    Packaging(Box<Exp>, Box<Exp>),
-    /// forall x: T, y: U, ... :: { trigger } e
-    Forall(Vec<(Ident, Type)>, Vec<Trigger>, Box<Exp>),
-    /// exists x: T, y: U, ... :: { trigger } e
-    Exists(Vec<(Ident, Type)>, Vec<Trigger>, Box<Exp>),
-    /// Sequence literals. 
-    SeqConstructor(SeqConstructor),
-    /// Set literals.
-    SetConstructor(SetConstructor),
-    /// Map literals.
-    MapConstructor(MapConstructor),
-    /// Absolute value |e|
-    Abs(Box<Exp>),
+    HeapUpdate(HeapUpdateOp, AccExp, Exp),
+    /// forall/exists x: T, y: U, ... :: { trigger } e
+    Quantifier(QuantifierKind, Vec<IdnDeclTyped>, Vec<Trigger>, Exp),
     /// let x = e1 in e2
-    LetIn(Ident, Box<Exp>, Box<Exp>),
+    LetIn(IdnDecl, Exp, Exp),
     /// Quantified permissions. forperm x: T, y: U, ... [Perm] :: e1
-    ForPerm(Vec<(Ident, Type)>, Box<ResAccess>, Box<Exp>),
+    ForPerm(Vec<IdnDeclTyped>, ResAccess, Exp),
     /// acc(e)
-    Acc(Box<AccExp>),
+    Acc(AccExp),
     /// f(e1, e2, ..., en)
     FuncApp(Ident, Vec<Exp>),
     /// x
     Ident(Ident),
     /// e1 op e2
-    BinOp(BinOp, Box<Exp>, Box<Exp>),
-    /// c ? e1 : e2 
-    Ternary(Box<Exp>, Box<Exp>, Box<Exp>),
+    BinOp(BinOp, Exp, Exp),
+    /// c ? e1 : e2
+    Ternary(Exp, Exp, Exp),
     /// e.f
-    Field(Box<Exp>, Ident),
+    /// Replaced with `FuncApp` after desugaring.
+    Field(Exp, Ident),
     /// e[e1]
-    Index(Box<Exp>, Box<IndexOp>),
-    /// - e
-    Neg(Box<Exp>),
-    /// ! e
-    Not(Box<Exp>),
-    /// Inhale-Exhale expressions [e1, e2]
-    InhaleExhale(Box<Exp>, Box<Exp>),
+    Index(Exp, IndexOp),
+    /// op e
+    UnOp(UnOp, Exp),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Const {
+pub enum ConstKind {
     Bool(bool),
     Int(num_bigint::BigInt),
     Null,
@@ -132,39 +151,36 @@ pub enum Const {
     Wildcard,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SetConstructor {
-    Empty(Type),
-    NonEmpty(Vec<Exp>),
-    MultisetEmpty(Type),
-    MultisetNonEmpty(Vec<Exp>),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HeapUpdateOp {
+    Unfold,
+    Fold,
+    Apply,
+    Package,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SeqConstructor {
-    Empty(Type),
-    NonEmpty(Vec<Exp>),
-    Range(Box<Exp>, Box<Exp>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum MapConstructor {
-    Empty(Type, Type),
-    NonEmpty(Vec<(Exp, Exp)>),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QuantifierKind {
+    Forall,
+    Exists,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AccExp {
     pub acc: LocAccess,
-    pub perm: Option<Exp>,
+    /// `Ok` is of type `Real` and represents the actual permission, `Err` is of
+    /// type `Bool` and represents a wildcard permission if true.
+    pub perm: Result<Exp, Exp>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinOp {
+    /// Replaced with `Ternary` after desugaring.
     Implies,
-    Iff,
-    And,
+    /// Replaced with `Ternary` after desugaring.
     Or,
+    And,
+    Iff,
     Eq,
     Neq,
     Lt,
@@ -177,13 +193,25 @@ pub enum BinOp {
     Mult,
     Div,
     Mod,
-    PermDiv,
+    IntDiv,
     Union,
     SetMinus,
     Intersection,
     Subset,
     Concat,
     MagicWand,
+    Range,
+    InhaleExhale,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum UnOp {
+    Not,
+    Neg,
+    IntToReal,
+    Abs,
+    Deref,
+    Perm,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -194,7 +222,7 @@ pub struct Trigger {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ResAccess {
     Loc(LocAccess),
-    Exp(Exp),
+    Exp(AccExp),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -204,24 +232,24 @@ pub struct Block {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Statement {
+    Assume(Exp),
     Assert(Exp),
     Refute(Exp),
-    Assume(Exp),
     Inhale(Exp),
     Exhale(Exp),
     Fold(Exp),
     Unfold(Exp),
     Goto(Ident),
-    Label(Ident, Vec<Invariant>),
+    Label(IdnDecl, Vec<Invariant>),
     Havoc(LocAccess),
     QuasiHavoc(Option<Exp>, Exp),
-    QuasiHavocAll(Vec<(Ident, Type)>, Option<Exp>, Exp),
-    Var(Vec<(Ident, Type)>, Option<Exp>),
+    QuasiHavocAll(Vec<IdnDeclTyped>, Option<Exp>, Exp),
+    Var(Vec<IdnDeclTyped>, Option<Exp>),
     While(Exp, Vec<WhileSpec>, Block),
     If(Exp, Block, Vec<(Exp, Block)>, Option<Block>),
     Wand(Ident, Exp),
-    Package(Exp, Option<Block>),
-    Apply(Exp),
+    Package(AccExp, Option<Block>),
+    Apply(AccExp),
     Assign(Vec<Exp>, Exp),
     Fresh(Vec<Ident>),
     Constraining(Vec<Ident>, Block),
@@ -260,35 +288,26 @@ pub struct LocAccess {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Field {
-    pub fields: Vec<(Ident, Type)>,
-}
+pub struct Field(pub Signature);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Domain {
-    pub name: Ident,
+    pub name: IdnDecl,
     pub interpretation: Vec<(Ident, String)>,
-    pub elements: Vec<DomainElement>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Function {
     pub signature: Signature,
     pub contract: Contract,
-    pub body: Option<Exp>,
+    pub body: Option<ExpBlock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Contract {
-    pub precondition: Option<Exp>,
-    pub postcondition: Option<Exp>,
+    pub precondition: Exp,
+    pub postcondition: Exp,
     pub decreases: Vec<Decreases>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DomainElement {
-    DomainFunction(DomainFunction),
-    Axiom(Axiom),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -300,28 +319,24 @@ pub struct DomainFunction {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Signature {
-    pub name: Ident,
+    pub name: IdnDecl,
     pub args: Vec<ArgOrType>,
     pub ret: Vec<ArgOrType>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
-    Int,
     Bool,
-    Perm,
+    Int,
+    Real,
     Ref,
-    Rational,
-    Seq(Box<Type>),
-    Set(Box<Type>),
-    Map(Box<Type>, Box<Type>),
-    User(Ident, Vec<Type>),
+    Domain(Ident, Vec<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Predicate {
     pub signature: Signature,
-    pub body: Option<Exp>,
+    pub body: Option<ExpBlock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -333,7 +348,7 @@ pub struct Method {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Adt {
-    pub name: Ident,
+    pub name: IdnDecl,
     pub args: Vec<Type>,
     pub variants: Vec<Variant>,
     pub derives: Vec<String>,
@@ -341,6 +356,6 @@ pub struct Adt {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Variant {
-    pub name: Ident,
-    pub fields: Vec<(Ident, Type)>,
+    pub name: IdnDecl,
+    pub fields: Vec<IdnDeclTyped>,
 }

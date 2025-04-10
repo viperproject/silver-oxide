@@ -9,3 +9,7 @@ edition = "2021"
 peg = "0.8.2"
 num-bigint = "0.4.6"
 fxhash = "0.2.1"
+internment = { git = "https://github.com/JonasAlaif/internment", default-features = false, features = ["std", "bump"] }
+
+typed-index-collections = "3.2.3"
+nonmax = "0.5"

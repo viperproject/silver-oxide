@@ -12,10 +12,10 @@ fn main() -> io::Result<()> {
         };
         // let  = Silver::parse(Rule::sil_program, &contents);
 
-        let peg_parse = peg::silver_parser::sil_program(&contents);
+        let peg_parse = full(&contents);
 
         if let Err(e) = peg_parse {
-            failed.push((file, format!("peg:  {e}")));
+            failed.push((file, format!("peg:  {e:?}")));
         }
     }
 
