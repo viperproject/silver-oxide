@@ -7,8 +7,9 @@ edition = "2021"
 
 [dependencies]
 peg = "0.8.2"
-num-bigint = "0.4.6"
-fxhash = "0.2.1"
+num = "0.4.3"
+indexmap = "2.9.0"
+petgraph = "0.6.5"
 internment = { git = "https://github.com/JonasAlaif/internment", default-features = false, features = ["std", "bump"] }
 
 typed-index-collections = "3.2.3"

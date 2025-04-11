@@ -56,7 +56,7 @@ impl<'a> AstWalker<'a> for CallResolver<'_, '_> {
                 self.resolve(ident, |data| matches!(data.kind, MemberKind::Field));
             }
             ExpKind::HeapUpdate(_, acc, _) if self.is_function() => {
-                assert_eq!(*acc.perm, ExpKind::Const(ConstKind::Write), "specifying perm amount in function heap updates not allowed");
+                assert_eq!(*acc.perm, ExpKind::Const(ConstKind::write()), "specifying perm amount in function heap updates not allowed");
             }
             _ => (),
         }

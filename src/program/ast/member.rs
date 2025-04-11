@@ -39,7 +39,7 @@ impl<'tcx> TyCtxt<'tcx> {
             Define(..) => Member::Define,
             Domain(..) => Member::Domain,
             DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Axiom(ax), .. }) => {
-                let a = tcx.translate_exp(&ax.exp.0, self.types.bool_);
+                let a = tcx.translate_exp(&ax.exp.0, self.types.bool_, false);
                 eprintln!("[Translate] axiom {:?}\n{a:?}", ax.name);
                 Member::DomainAxiom(a)
             }
@@ -47,14 +47,15 @@ impl<'tcx> TyCtxt<'tcx> {
                 Member::DomainFunction,
             Field(..) => Member::Field,
             Function(f) => {
+                let have_heap = !f.contract.precondition.is_pure();
                 let pre = tcx.translate_resource(&f.contract.precondition);
                 eprintln!("[Translate] fn pre {:?}\n{pre:?}", f.signature.name.0.0);
                 tcx.add_return();
-                let post = tcx.translate_exp(&f.contract.postcondition.exp, self.types.bool_);
+                let post = tcx.translate_exp(&f.contract.postcondition.exp, self.types.bool_, have_heap);
                 eprintln!("[Translate] fn post {:?}\n{post:?}", f.signature.name.0.0);
                 let body = f.body.as_ref().map(|b| {
                     let ty = tcx.fn_result();
-                    let body = tcx.translate_exp(&b.0, ty);
+                    let body = tcx.translate_exp(&b.0, ty, have_heap);
                     eprintln!("[Translate] fn body {:?}\n{body:?}", f.signature.name.0.0);
                     body
                 });

@@ -20,7 +20,7 @@ impl<'tcx> TyCtxt<'tcx> {
 
 pub struct Desugar<'r, 'tcx> {
     tcx: &'r TyCtxt<'tcx>,
-    def_id: LocalDefId,
+    _def_id: LocalDefId,
 
     in_assert_assume: bool,
     mk_wildcard: bool,
@@ -32,11 +32,11 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
     /// Converts `assert/assume e` into `assert/assume e'` where e.g.
     /// `acc(x.f, p)` is converted to `perm(x.f) >= p`, or `pred(...)` is
     /// converted to `perm(pred(...)) >= write`.
-    pub fn desugar_decl(tcx: &'r TyCtxt<'tcx>, def_id: LocalDefId, decl: &mut Declaration) {
+    pub fn desugar_decl(tcx: &'r TyCtxt<'tcx>, _def_id: LocalDefId, decl: &mut Declaration) {
         let mk_wildcard = matches!(decl, Declaration::Function(_));
         let mut self_ = Self {
             tcx,
-            def_id,
+            _def_id,
             in_assert_assume: false,
             mk_wildcard,
             impure: None,
@@ -139,7 +139,7 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
                     panic!("impure access in pure context");
                 };
                 acc.walk_mut(self);
-                let exp = core::mem::replace(ast, ConstKind::bool(true));
+                let exp = core::mem::replace(ast, ExpKind::bool(true));
                 let ExpKind::Acc(acc) = *exp else {
                     unreachable!();
                 };
@@ -147,7 +147,7 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
             }
             ExpKind::HeapUpdate(_, acc, _) => {
                 if self.mk_wildcard {
-                    assert_eq!(*acc.perm, ExpKind::Const(ConstKind::Write));
+                    assert_eq!(*acc.perm, ExpKind::Const(ConstKind::write()));
                     *acc.perm = ExpKind::Const(ConstKind::Wildcard);
                 }
             }
@@ -157,7 +157,7 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
                     let loc = Self::take(ast);
                     let loc = AccExp {
                         acc: LocAccess { loc },
-                        perm: ConstKind::write(),
+                        perm: ExpKind::write(),
                     };
                     self.impure = impure;
                     self.replace_exp(ast, ExpKind::Acc(loc));
@@ -175,7 +175,7 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
 
                     let c = Self::take(lhs);
                     let mut t = Self::take(rhs);
-                    let mut e = ConstKind::bool(false);
+                    let mut e = ExpKind::bool(false);
 
                     let impure = self.impure.take().unwrap();
                     let impure = impure.with_cond(self, &c, &mut t, &mut e);
@@ -187,15 +187,29 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
                     let lhs = Self::take(lhs);
                     let rhs = Self::take(rhs);
                     let (t, e) = match *op {
-                        BinOp::And => (rhs, ConstKind::bool(false)),
-                        BinOp::Or => (ConstKind::bool(true), rhs),
-                        BinOp::Implies => (rhs, ConstKind::bool(true)),
+                        BinOp::And => (rhs, ExpKind::bool(false)),
+                        BinOp::Or => (ExpKind::bool(true), rhs),
+                        BinOp::Implies => (rhs, ExpKind::bool(true)),
                         _ => unreachable!(),
                     };
                     let new = ExpKind::Ternary(lhs, t, e);
                     self.impure = impure;
                     self.replace_exp(ast, new);
                     return self.impure.take();
+                }
+                BinOp::Gt => {
+                    let lhs = Self::take(lhs);
+                    let rhs = Self::take(rhs);
+                    let new = ExpKind::BinOp(BinOp::Lt, rhs, lhs);
+                    self.replace_exp(ast, new);
+                    return impure;
+                }
+                BinOp::Ge => {
+                    let lhs = Self::take(lhs);
+                    let rhs = Self::take(rhs);
+                    let new = ExpKind::BinOp(BinOp::Le, rhs, lhs);
+                    self.replace_exp(ast, new);
+                    return impure;
                 }
                 _ => (),
             }
@@ -288,9 +302,9 @@ impl<'r> ImpureCollector<'r> {
             })
             .collect();
         if mk_wildcard {
-            let c = ExpKind::BinOp(BinOp::Lt, ConstKind::none(), acc.perm);
+            let c = ExpKind::BinOp(BinOp::Lt, ExpKind::none(), acc.perm);
             cond.push(Box::new(c));
-            acc.perm = ConstKind::wildcard();
+            acc.perm = ExpKind::wildcard();
         }
         self.res.push(ResourceExp { cond, acc });
     }

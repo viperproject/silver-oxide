@@ -1,4 +1,4 @@
-use fxhash::{FxHashMap, FxHashSet};
+use crate::{HashMap, HashSet};
 
 use crate::{
     parse::ast::*,
@@ -6,9 +6,9 @@ use crate::{
 };
 
 pub struct Macro<'a> {
-    pub macros: &'a FxHashMap<Ident, Define>,
-    pub substs: FxHashMap<Ident, ExpKind>,
-    pub seen: &'a mut FxHashSet<Ident>,
+    pub macros: &'a HashMap<Ident, Define>,
+    pub substs: HashMap<Ident, ExpKind>,
+    pub seen: &'a mut HashSet<Ident>,
 }
 
 impl Macro<'_> {
@@ -16,8 +16,8 @@ impl Macro<'_> {
         let macros = program.get_macros();
         let mut self_ = Macro {
             macros: &macros,
-            substs: FxHashMap::default(),
-            seen: &mut FxHashSet::default(),
+            substs: HashMap::default(),
+            seen: &mut HashSet::default(),
         };
         self_.walk_mut_program(program);
     }
@@ -36,7 +36,7 @@ impl Macro<'_> {
         self.macros.get(id).filter(|d| !d.args.is_empty())
     }
 
-    pub fn apply_substs(&mut self, id: &Ident, substs: FxHashMap<Ident, ExpKind>, exp: &mut ExpKind) {
+    pub fn apply_substs(&mut self, id: &Ident, substs: HashMap<Ident, ExpKind>, exp: &mut ExpKind) {
         if !self.seen.insert(id.clone()) {
             panic!("Macro recursion detected on `{}`", id.0);
         }
@@ -46,7 +46,7 @@ impl Macro<'_> {
             seen: self.seen,
         };
         self_.walk_mut_exp_kind(exp);
-        self.seen.remove(id);
+        self.seen.swap_remove(id);
     }
 }
 
@@ -55,7 +55,7 @@ impl AstWalkerMut<'_> for Macro<'_> {
         let new = match ast {
             ExpKind::Ident(id) if self.get_subst(id).is_some() => {
                 let mut body = self.get_subst(id).unwrap().clone();
-                self.apply_substs(id, FxHashMap::default(), &mut body);
+                self.apply_substs(id, HashMap::default(), &mut body);
                 body
             }
             ExpKind::FuncApp(id, args) if self.get_call(id).is_some() => {
@@ -88,8 +88,8 @@ impl AstWalkerMut<'_> for Macro<'_> {
 }
 
 impl Program {
-    fn get_macros(&mut self) -> FxHashMap<Ident, Define> {
-        let mut macros = FxHashMap::default();
+    fn get_macros(&mut self) -> HashMap<Ident, Define> {
+        let mut macros = HashMap::default();
         self.0.retain(|d| match d {
             Declaration::Define(m) => {
                 macros.insert(m.name.0.clone(), m.clone());

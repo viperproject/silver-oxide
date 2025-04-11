@@ -1,4 +1,6 @@
-use crate::parse::{ConstKind, Ident};
+use ::std::borrow::Borrow;
+
+use crate::parse::{ConstHeapKind, ConstKind, Ident};
 
 use super::*;
 
@@ -25,17 +27,29 @@ impl<'tcx> Interner<'tcx> {
         TyList(Interned(self.0.ty_list.intern(tys)))
     }
 
-    pub fn mk_const(&self, const_: &ConstKind) -> Const<'tcx> {
-        let const_ = match const_ {
-            ConstKind::Bool(true) => &ConstKind::Bool(true),
-            ConstKind::Bool(false) => &ConstKind::Bool(false),
-            ConstKind::Null => &ConstKind::Null,
-            ConstKind::None => &ConstKind::None,
-            ConstKind::Write => &ConstKind::Write,
-            ConstKind::Epsilon => &ConstKind::Epsilon,
-            ConstKind::Wildcard => &ConstKind::Wildcard,
-            ConstKind::SelfFramingHeap => &ConstKind::SelfFramingHeap,
-            ConstKind::Int(..) => self.0.const_.intern_ref(const_),
+    pub fn mk_const_ref(&self, const_: &ConstKind) -> Const<'tcx> {
+        Self::mk_const_inner(const_, |const_| {
+            self.0.const_.intern_ref(const_)
+        })
+    }
+
+    pub fn mk_const(&self, const_: ConstKind) -> Const<'tcx> {
+        Self::mk_const_inner(const_, |const_| {
+            self.0.const_.intern(const_)
+        })
+    }
+
+    fn mk_const_inner<T: Borrow<ConstKind>>(const_: T, intern: impl FnOnce(T) -> &'tcx ConstKind) -> Const<'tcx> {
+        use ConstKind::*;
+        let const_ = match const_.borrow() {
+            Bool(true) => &Bool(true),
+            Bool(false) => &Bool(false),
+            Null => &Null,
+            Epsilon => &Epsilon,
+            Wildcard => &Wildcard,
+            Heap(ConstHeapKind::Old) => &Heap(ConstHeapKind::Old),
+            Heap(ConstHeapKind::SelfFraming) => &Heap(ConstHeapKind::SelfFraming),
+            Int(..) | Real(..) => intern(const_),
         };
         Const(Interned(const_))
     }

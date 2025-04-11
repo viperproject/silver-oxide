@@ -43,3 +43,5 @@ impl From<ProcessError> for SilverError {
 
 type NonMaxU32 = nonmax::NonMaxU32;
 type TiVec<K, V> = typed_index_collections::TiVec<K, V>;
+type HashMap<K, V> = indexmap::IndexMap<K, V>;
+type HashSet<K> = indexmap::IndexSet<K>;

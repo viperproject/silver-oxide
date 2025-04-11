@@ -37,10 +37,11 @@ macro_rules! idx {
     };
 }
 
-idx!(Local, "l{}");
+idx!(Local, "_{}");
 idx!(ExpLocal, "e{}");
 
 idx!(BasicBlock, "bb{}");
+idx!(Label, "lbl{}");
 
 idx!(LocalDefId, "id{}");
 

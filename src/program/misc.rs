@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::parse::ConstKind;
+use crate::parse::{ConstHeapKind, ConstKind};
 
 use super::{LocalDefId, Interned, TyCtxt};
 
@@ -64,6 +64,36 @@ impl<'tcx> Const<'tcx> {
     pub fn kind(self) -> &'tcx ConstKind {
         self.0 .0
     }
+
+    pub fn as_bool(self) -> Option<bool> {
+        match self.kind() {
+            ConstKind::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    pub fn as_int(self) -> Option<&'tcx num::BigInt> {
+        match self.kind() {
+            ConstKind::Int(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn is_wildcard(self) -> bool {
+        matches!(self.kind(), ConstKind::Wildcard)
+    }
+
+    pub fn is_epsilon(self) -> bool {
+        matches!(self.kind(), ConstKind::Epsilon)
+    }
+
+    pub fn is_heap(self) -> bool {
+        matches!(self.kind(), ConstKind::Heap(..))
+    }
+
+    pub fn is_imprecise(self) -> bool {
+        self.is_wildcard() || self.is_heap()
+    }
 }
 
 // fmt
@@ -99,15 +129,18 @@ impl fmt::Debug for Const<'_> {
 
 impl fmt::Display for ConstKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use num::{Zero, One};
         match self {
             ConstKind::Bool(b) => write!(f, "{b}"),
             ConstKind::Int(i) => write!(f, "{i}"),
+            ConstKind::Real(r) if r.is_zero() => write!(f, "none"),
+            ConstKind::Real(r) if r.is_one() => write!(f, "write"),
+            ConstKind::Real(r) => write!(f, "{} / {}", r.numer(), r.denom()),
             ConstKind::Null => write!(f, "null"),
-            ConstKind::None => write!(f, "none"),
-            ConstKind::Write => write!(f, "write"),
             ConstKind::Epsilon => write!(f, "epsilon"),
             ConstKind::Wildcard => write!(f, "wildcard"),
-            ConstKind::SelfFramingHeap => write!(f, "▣"),
+            ConstKind::Heap(ConstHeapKind::Old) => write!(f, "□"),
+            ConstKind::Heap(ConstHeapKind::SelfFraming) => write!(f, "▣"),
         }
     }
 }

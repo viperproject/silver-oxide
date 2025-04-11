@@ -38,20 +38,48 @@ impl Ident {
 }
 
 impl ConstKind {
-    pub fn bool(b: bool) -> Exp {
-        Box::new(ExpKind::Const(ConstKind::Bool(b)))
+    pub fn bool(b: bool) -> Self {
+        ConstKind::Bool(b)
     }
 
-    pub fn write() -> Exp {
-        Box::new(ExpKind::Const(ConstKind::Write))
+    pub fn rational(n: isize) -> num::BigRational {
+        num::BigInt::from(n).into()
+    }
+
+    pub fn none() -> Self {
+        ConstKind::Real(ConstKind::rational(0))
+    }
+
+    pub fn write() -> Self {
+        ConstKind::Real(ConstKind::rational(1))
+    }
+
+    pub fn wildcard() -> Self {
+        ConstKind::Wildcard
+    }
+}
+
+impl From<ConstKind> for Exp {
+    fn from(value: ConstKind) -> Self {
+        Box::new(ExpKind::Const(value))
+    }
+}
+
+impl ExpKind {
+    pub fn bool(b: bool) -> Exp {
+        ConstKind::bool(b).into()
     }
 
     pub fn none() -> Exp {
-        Box::new(ExpKind::Const(ConstKind::None))
+        ConstKind::none().into()
+    }
+
+    pub fn write() -> Exp {
+        ConstKind::write().into()
     }
 
     pub fn wildcard() -> Exp {
-        Box::new(ExpKind::Const(ConstKind::Wildcard))
+        ConstKind::wildcard().into()
     }
 }
 

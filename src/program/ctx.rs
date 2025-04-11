@@ -63,7 +63,7 @@ impl<'tcx> TyCtxt<'tcx> {
         }
     }
 
-    pub fn item_name(&self, id: DefId) -> Option<Symbol<'tcx>> {
+    pub fn item_name<Id: Into<DefId>>(&self, id: Id) -> Option<Symbol<'tcx>> {
         self.data(id).sig.map(|s| s.name)
     }
 
@@ -91,12 +91,11 @@ impl<'tcx> TyCtxt<'tcx> {
         match const_.kind() {
             Bool(..) => self.types.bool_,
             Int(..) => self.types.int_,
+            Real(..) => self.types.real_,
             Null => self.types.ref_,
-            None => self.types.real_,
-            Write => self.types.real_,
             Epsilon => self.types.real_,
             Wildcard => self.types.real_,
-            SelfFramingHeap => self.types.heap_,
+            Heap(..) => self.types.heap_,
         }
     }
 

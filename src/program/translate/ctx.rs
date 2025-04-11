@@ -1,15 +1,16 @@
-use fxhash::FxHashMap;
+use crate::{HashMap, HashSet};
 
-use crate::{parse::{AstWalkable, AstWalker, Statement, StmtBlock}, program::{body::Location, ArgRef, Local, LocalDefId, Ty, TyCtxt, TyKind}, TiVec};
+use crate::{parse::{AstWalkable, AstWalker, ExpKind, Statement, StmtBlock}, program::{ArgRef, Local, LocalDefId, Symbol, Ty, TyCtxt, TyKind}, TiVec};
 
 pub(crate) struct TranslationCtxt<'a, 'tcx> {
     pub(super) tcx: &'a TyCtxt<'tcx>,
     pub(super) id: LocalDefId,
-    pub(super) params: FxHashMap<ArgRef<'tcx>, Local>,
+    pub(super) params: HashMap<ArgRef<'tcx>, Local>,
     pub(super) locals: TiVec<Local, Ty<'tcx>>,
 
-    /// Ok(false) -> no heap, Ok(true) -> self framing heap, Err(loc) -> heap in method
-    pub(super) curr_heap: Result<bool, Location>,
+    pub(super) defined_labels: HashSet<Symbol<'tcx>>,
+    pub(super) used_labels: HashSet<Symbol<'tcx>>,
+    pub(super) goto_labels: HashSet<Symbol<'tcx>>,
 }
 
 impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
@@ -26,9 +27,11 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
         let self_ = Self {
             tcx,
             id,
-            curr_heap: Ok(false),
             params,
             locals,
+            defined_labels: Default::default(),
+            used_labels: Default::default(),
+            goto_labels: Default::default(),
         };
         assert_eq!(self_.params.len(), self_.locals.len(), "duplicate parameters in signature");
         self_
@@ -49,6 +52,13 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
 
     pub(super) fn add_body(&mut self, body: &StmtBlock) {
         self.walk_block(body);
+        for label in self.used_labels.drain(..) {
+            assert!(self.defined_labels.contains(&label), "label `{label}` not defined");
+            let heap = self.locals.push_and_get_key(self.tcx.types.heap_);
+            let old = self.params.insert(ArgRef::Label(label), heap);
+            assert!(old.is_none());
+        }
+        assert!(self.goto_labels.is_subset(&self.defined_labels), "goto label not defined");
     }
 
     pub(super) fn any_resource_id(&self) -> Ty<'tcx> {
@@ -63,14 +73,33 @@ fn arg_ref_to_stmt_local<'a, 'tcx>(arg_ref: &'a [ArgRef<'tcx>], offset: usize) -
 
 impl<'a> AstWalker<'a> for TranslationCtxt<'_, '_> {
     fn walk_statement(&mut self, ast: &'a Statement) {
-        if let Statement::Var(new, _) = ast {
-            for new in new {
-                let ty = self.tcx.translate_type(&new.ty);
-                let id = self.locals.push_and_get_key(ty);
-                let idn = self.tcx.interner.mk_symbol(&new.idn.0);
-                let old = self.params.insert(ArgRef::Ident(idn), id);
-                assert!(old.is_none(), "duplicate var in body `{}`", new.idn.0.0);
+        match ast {
+            Statement::Var(new, _) => {
+                for new in new {
+                    let ty = self.tcx.translate_type(&new.ty);
+                    let id = self.locals.push_and_get_key(ty);
+                    let idn = self.tcx.interner.mk_symbol(&new.idn.0);
+                    let old = self.params.insert(ArgRef::Ident(idn), id);
+                    assert!(old.is_none(), "duplicate var in body `{}`", new.idn.0.0);
+                }
             }
+            Statement::Label(decl, _) => {
+                self.defined_labels.insert(self.tcx.interner.mk_symbol(&decl.0));
+            }
+            Statement::Goto(label) => {
+                self.goto_labels.insert(self.tcx.interner.mk_symbol(label));
+            }
+            _ => (),
+        }
+        ast.walk_children(self);
+    }
+
+    fn walk_exp_kind(&mut self, ast: &'a ExpKind) {
+        match ast {
+            ExpKind::Old(Some(label), ..) => {
+                self.used_labels.insert(self.tcx.interner.mk_symbol(label));
+            }
+            _ => (),
         }
         ast.walk_children(self);
     }

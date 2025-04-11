@@ -1,4 +1,4 @@
-use num_bigint::BigInt;
+use num::{BigInt, BigRational};
 
 use crate::{parse::ast::*, program::LocalDefId, TiVec};
 
@@ -34,6 +34,7 @@ pub trait AstWalker<'a>: Sized {
     walk_children!(walk_exp, 'a, Exp);
     walk_children!(walk_exp_kind, 'a, ExpKind);
     walk_children!(walk_const, 'a, ConstKind);
+    walk_children!(walk_const_heap_kind, 'a, ConstHeapKind);
     walk_children!(walk_heap_op_kind, 'a, HeapUpdateOp);
     walk_children!(walk_quantifier_kind, 'a, QuantifierKind);
     walk_children!(walk_acc_exp, 'a, AccExp);
@@ -64,6 +65,8 @@ pub trait AstWalker<'a>: Sized {
     walk_children!(walk_string, 'a, String);
     walk_children!(walk_bool, 'a, bool);
     walk_children!(walk_big_int, 'a, BigInt);
+    walk_children!(walk_big_rational, 'a, BigRational);
+    walk_children!(walk_usize, 'a, usize);
 
     #[allow(unused_variables)]
     fn visit_local_def_id(&mut self, did: LocalDefId) {}
@@ -100,6 +103,7 @@ pub trait AstWalkerMut<'a>: Sized {
     walk_mut_children!(walk_mut_exp, 'a, Exp);
     walk_mut_children!(walk_mut_exp_kind, 'a, ExpKind);
     walk_mut_children!(walk_mut_const, 'a, ConstKind);
+    walk_mut_children!(walk_mut_const_heap_kind, 'a, ConstHeapKind);
     walk_mut_children!(walk_mut_heap_op_kind, 'a, HeapUpdateOp);
     walk_mut_children!(walk_mut_quantifier_kind, 'a, QuantifierKind);
     walk_mut_children!(walk_mut_acc_exp, 'a, AccExp);
@@ -130,6 +134,8 @@ pub trait AstWalkerMut<'a>: Sized {
     walk_mut_children!(walk_mut_string, 'a, String);
     walk_mut_children!(walk_mut_bool, 'a, bool);
     walk_mut_children!(walk_mut_big_int, 'a, BigInt);
+    walk_mut_children!(walk_mut_big_rational, 'a, BigRational);
+    walk_mut_children!(walk_mut_usize, 'a, usize);
 
     #[allow(unused_variables)]
     fn visit_local_def_id(&mut self, did: LocalDefId) {}
@@ -313,12 +319,18 @@ walk_enum!(
     walk_mut_const,
     Bool(b),
     Int(i),
+    Real(r),
     Null,
-    None,
-    Write,
     Epsilon,
     Wildcard,
-    SelfFramingHeap
+    Heap(k)
+);
+walk_enum!(
+    ConstHeapKind,
+    walk_const_heap_kind,
+    walk_mut_const_heap_kind,
+    Old,
+    SelfFraming
 );
 
 walk_enum!(
@@ -396,13 +408,13 @@ walk_enum!(
     QuasiHavocAll(vars, e1, e2),
     Var(vars, e),
     While(e, specs, decs, b),
-    If(e, b, branches, else_),
+    If(e, then, else_),
     // Wand(i, e),
     Package(e, b),
     Apply(e),
     Assign(lhs, rhs),
     Fresh(vars),
-    Constraining(vars, b),
+    // Constraining(vars, b),
     Block(b),
     New(i, star_or_names)
 );
@@ -603,6 +615,8 @@ impl<T: AstWalkable, U: AstWalkable> AstWalkable for (T, U) {
 walk_struct!(String, walk_string, walk_mut_string);
 walk_struct!(bool, walk_bool, walk_mut_bool);
 walk_struct!(BigInt, walk_big_int, walk_mut_big_int);
+walk_struct!(BigRational, walk_big_rational, walk_mut_big_rational);
+walk_struct!(usize, walk_usize, walk_mut_usize);
 
 
 pub trait AstVisitable {

@@ -63,7 +63,7 @@ impl HeapExp {
     }
 
     pub(super) fn conjoin(exp: Vec<Exp>) -> Self {
-        let init = ConstKind::bool(true);
+        let init = ExpKind::bool(true);
         let exp = exp.into_iter().fold(init, ExpKind::conjoin);
         Self::new(exp)
     }
@@ -71,7 +71,7 @@ impl HeapExp {
 
 impl From<Vec<PrePostDec>> for Contract {
     fn from(value: Vec<PrePostDec>) -> Self {
-        let mut precondition = ConstKind::bool(true);
+        let mut precondition = ExpKind::bool(true);
         let mut decreases = vec![];
         for p in value {
             match p {
@@ -80,7 +80,7 @@ impl From<Vec<PrePostDec>> for Contract {
                 _ => {}
             }
         }
-        let postcondition = HeapExp::new(ConstKind::bool(true));
+        let postcondition = HeapExp::new(ExpKind::bool(true));
         Self { precondition: HeapExp::new(precondition), postcondition, decreases }
     }
 }
@@ -114,5 +114,11 @@ impl ExpKind {
             other => ExpKind::BinOp(BinOp::And, Box::new(other), new),
         };
         acc
+    }
+}
+
+impl HeapExp {
+    pub fn is_pure(&self) -> bool {
+        self.res.is_empty()
     }
 }

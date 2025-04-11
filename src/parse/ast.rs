@@ -161,13 +161,20 @@ pub enum ExpKind {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ConstKind {
     Bool(bool),
-    Int(num_bigint::BigInt),
+    Int(num::BigInt),
+    Real(num::BigRational),
     Null,
-    None,
-    Write,
     Epsilon,
     Wildcard,
-    SelfFramingHeap,
+    Heap(ConstHeapKind),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ConstHeapKind {
+    /// The heap initialised from the precondition
+    Old,
+    /// An empty heap which has been initialised from a `HeapExp`
+    SelfFraming,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -196,13 +203,16 @@ pub enum BinOp {
     Implies,
     /// Replaced with `Ternary` after desugaring.
     Or,
+    /// Replaced with `Ternary` after desugaring.
     And,
     Iff,
     Eq,
     Neq,
     Lt,
     Le,
+    /// Replaced with swapped `Lt` after desugaring.
     Gt,
+    /// Replaced with swapped `Le` after desugaring.
     Ge,
     In,
     Plus,
@@ -258,13 +268,13 @@ pub enum Statement {
     QuasiHavocAll(Vec<IdnDeclTyped>, Option<Exp>, Exp),
     Var(Vec<IdnDeclTyped>, Option<Exp>),
     While(Exp, Invariant, Vec<Decreases>, StmtBlock),
-    If(Exp, StmtBlock, Vec<(Exp, StmtBlock)>, Option<StmtBlock>),
+    If(Exp, StmtBlock, Option<StmtBlock>),
     // Wand(Ident, Exp),
     Package(AccExp, Option<StmtBlock>),
     Apply(AccExp),
     Assign(Vec<Exp>, Exp),
     Fresh(Vec<Ident>),
-    Constraining(Vec<Ident>, StmtBlock),
+    // Constraining(Vec<Ident>, StmtBlock),
     Block(StmtBlock),
     New(Ident, StarOrNames),
 }

@@ -38,7 +38,7 @@ peg::parser! {
 
         rule kw<R>(r: rule<R>) -> () = r() !char()
 
-        rule integer() -> num_bigint::BigInt = s:$("-"? ['0'..='9']+) {? s.parse().or(Err("invalid integer")) }
+        rule integer() -> num::BigInt = s:$("-"? ['0'..='9']+) {? s.parse().or(Err("invalid integer")) }
 
         rule comma() = _ "," _
 
@@ -80,7 +80,7 @@ peg::parser! {
 
         rule predicate_access() -> LocAccess = loc: func_app() { LocAccess { loc: Box::new(loc) } }
 
-        rule predicate_perm() -> AccExp = acc_exp() / acc:predicate_access() { AccExp { acc, perm: ConstKind::write() } }
+        rule predicate_perm() -> AccExp = acc_exp() / acc:predicate_access() { AccExp { acc, perm: ExpKind::write() } }
 
         // TODO: only accept expressions that end with a .field
         rule field_access() -> ExpKind = suffix_exp()
@@ -90,7 +90,7 @@ peg::parser! {
         rule res_access() -> ResAccess = e:magic_wand_exp() { ResAccess::Exp(e) } / l:loc_access() { ResAccess::Loc(l) }
 
         rule acc_exp() -> AccExp
-            = "acc" _ "(" _ acc:loc_access() _ perm:("," _ e:exp() { e })? _ ")" { AccExp { acc, perm: perm.unwrap_or_else(ConstKind::write) } }
+            = "acc" _ "(" _ acc:loc_access() _ perm:("," _ e:exp() { e })? _ ")" { AccExp { acc, perm: perm.unwrap_or_else(ExpKind::write) } }
 
         rule trigger() -> Trigger = "{" _ es:(exp() ** comma()) _ "}" { Trigger { exp: es } }
 
@@ -124,7 +124,7 @@ peg::parser! {
 
         rule magic_wand_exp() -> AccExp = loc:exp() { match *loc {
             ExpKind::Acc(acc) => acc,
-            _ => AccExp { acc: LocAccess { loc }, perm: ConstKind::write() }
+            _ => AccExp { acc: LocAccess { loc }, perm: ExpKind::write() }
         } }
 
         rule func_app() -> ExpKind = id:ident() (" ")* "(" _ es:(exp() ** comma()) _ ")" { ExpKind::FuncApp(id, es) }
@@ -142,8 +142,8 @@ peg::parser! {
             / kw(<"old">) _ i:("[" _ i:ident() _ "]" {i})? _ "(" _ e:exp() _ ")" { ExpKind::Old(i, e) }
             // / "[" _ i:ident() _ "]" _ "(" _ e:exp() _ ")" { ExpKind::At(i, Box::new(e)) }
             // / kw(<"lhs">) _ "(" _ e:exp() _ ")" { ExpKind::Lhs(Box::new(e)) }
-            / kw(<"none">) { ExpKind::Const(ConstKind::None) }
-            / kw(<"write">) { ExpKind::Const(ConstKind::Write) }
+            / kw(<"none">) { ExpKind::Const(ConstKind::Real(num::BigInt::from(0).into())) }
+            / kw(<"write">) { ExpKind::Const(ConstKind::Real(num::BigInt::from(1).into())) }
             / kw(<"epsilon">) { ExpKind::Const(ConstKind::Epsilon) }
             / kw(<"wildcard">) { ExpKind::Const(ConstKind::Wildcard) }
             / kw(<"perm">) _ "(" _ l:exp() _ ")" { ExpKind::UnOp(UnOp::Perm, l) }
@@ -287,8 +287,11 @@ peg::parser! {
 
         rule invariant() -> Exp = "invariant" _ e:exp() { e }
 
-        rule if_statement() -> Statement = "if" _ "(" _ cond:exp() _ ")" _ then:block() _ elsifs:(elsif_block()** _) _ else_:("else" _ else_:block() { else_})?
-            { Statement::If(cond, then, elsifs, else_) }
+        rule if_statement() -> Statement = "if" _ "(" _ cond:exp() _ ")" _ then:block() _ elsifs:(elsif_block()** _) _ else_:("else" _ else_:block() { else_})? {
+            let mut elsifs = [(cond, then)].into_iter().chain(elsifs).rev();
+            let (cond, then) = elsifs.next().unwrap();
+            elsifs.fold(Statement::If(cond, then, else_), |acc, (cond, then)| Statement::If(cond, then, Some(Block(vec![acc]))))
+        }
 
         rule elsif_block() -> (Exp, StmtBlock) =
             "elseif" _ "(" _ exp:exp() _ ")" _ block:block() { (exp, block)}

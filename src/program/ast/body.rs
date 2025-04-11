@@ -6,6 +6,7 @@ use super::{exp::Exp, idx::*, resource::ResourceExp};
 pub struct Body<'tcx> {
     pub locals: TiVec<Local, Ty<'tcx>>,
     pub basic_blocks: TiVec<BasicBlock, BasicBlockData<'tcx>>,
+    pub labels: TiVec<Label, Location>,
 }
 
 #[derive(Debug)]

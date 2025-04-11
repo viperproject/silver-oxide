@@ -1,4 +1,4 @@
-use fxhash::FxHashMap;
+use crate::HashMap;
 
 use crate::parse::{ArgOrType, Declaration, DomainElementKind, Method, Program};
 
@@ -7,7 +7,7 @@ use crate::{program::*, TiVec};
 #[derive(Debug, Default)]
 pub struct Globals<'tcx> {
     pub(crate) data: TiVec<LocalDefId, MemberData<'tcx>>,
-    pub(crate) resolved: FxHashMap<Symbol<'tcx>, LocalDefId>,
+    pub(crate) resolved: HashMap<Symbol<'tcx>, LocalDefId>,
     pub(crate) sigs: TiVec<LocalDefId, Option<FnSig<'tcx>>>,
 }
 
@@ -145,6 +145,7 @@ impl<'tcx> FnSig<'tcx> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArgRef<'tcx> {
     Ident(Symbol<'tcx>),
+    Label(Symbol<'tcx>),
     HeapArg,
     HeapRet,
     Result,
@@ -186,7 +187,7 @@ impl<'tcx> TyCtxt<'tcx> {
         let (heap_arg, ret) = match decl {
             Function(f) => {
                 assert_eq!(sig.ret.len(), 1);
-                let heap_dependent = !f.contract.precondition.res.is_empty();
+                let heap_dependent = !f.contract.precondition.is_pure();
                 // TODO: should this be a `Heap` type arg?
                 let earg = heap_dependent.then(|| mk_compound(Some(false)));
                 (earg, Ok(intern_arg(&sig.ret[0])))
