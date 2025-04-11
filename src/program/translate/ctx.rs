@@ -1,13 +1,15 @@
 use fxhash::FxHashMap;
 
-use crate::{parse::{AstWalkable, AstWalker, Block, Statement}, program::{idx::{LocalDefId, Local}, ArgRef, Symbol, Ty, TyCtxt}, TiVec};
+use crate::{parse::{AstWalkable, AstWalker, Statement, StmtBlock}, program::{body::Location, ArgRef, Local, LocalDefId, Ty, TyCtxt, TyKind}, TiVec};
 
 pub(crate) struct TranslationCtxt<'a, 'tcx> {
     pub(super) tcx: &'a TyCtxt<'tcx>,
     pub(super) id: LocalDefId,
     pub(super) params: FxHashMap<ArgRef<'tcx>, Local>,
     pub(super) locals: TiVec<Local, Ty<'tcx>>,
-    pub(super) curr_heap: Option<Local>,
+
+    /// Ok(false) -> no heap, Ok(true) -> self framing heap, Err(loc) -> heap in method
+    pub(super) curr_heap: Result<bool, Location>,
 }
 
 impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
@@ -24,7 +26,7 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
         let self_ = Self {
             tcx,
             id,
-            curr_heap: None,
+            curr_heap: Ok(false),
             params,
             locals,
         };
@@ -41,16 +43,17 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
         assert_eq!(self.params.len(), self.locals.len(), "duplicate parameters in returns");
     }
 
-    pub(crate) fn set_heap(&mut self) {
-        self.curr_heap = Some(self.params[&ArgRef::HeapArg]);
-    }
-
     pub(crate) fn fn_result(&self) -> Ty<'tcx> {
         self.locals[self.params[&ArgRef::Result]]
     }
 
-    pub(super) fn add_body(&mut self, body: &Block) {
+    pub(super) fn add_body(&mut self, body: &StmtBlock) {
         self.walk_block(body);
+    }
+
+    pub(super) fn any_resource_id(&self) -> Ty<'tcx> {
+        let heap_ = self.tcx.types.heap_;
+        self.tcx.interner.mk_ty_from_kind(TyKind::ResourceId(heap_))
     }
 }
 

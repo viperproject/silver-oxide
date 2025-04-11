@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use core::{fmt, ops::Deref};
 
 use super::{DefId, Interned, Interner, Symbol};
 
@@ -23,7 +23,7 @@ impl<'tcx> Types<'tcx> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Ty<'tcx>(pub(crate) Interned<'tcx, TyKind<'tcx>>);
 
 impl<'tcx> Ty<'tcx> {
@@ -32,7 +32,7 @@ impl<'tcx> Ty<'tcx> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TyList<'tcx>(pub(crate) Interned<'tcx, [Ty<'tcx>]>);
 
 impl<'tcx> TyList<'tcx> {
@@ -48,7 +48,7 @@ impl<'tcx> Deref for TyList<'tcx> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TyKind<'tcx> {
     Bool,
     Int,
@@ -84,4 +84,38 @@ pub struct CompoundId {
     /// `None` for `Predicate`, `Some(false)` for `Function`, and `Some(false |
     /// true)` for `Method`. Indicates if talking about the postcondition.
     pub contract: Option<bool>,
+}
+
+// fmt
+
+impl fmt::Debug for Ty<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.kind() {
+            TyKind::Bool => write!(f, "bool"),
+            TyKind::Int => write!(f, "int"),
+            TyKind::Real => write!(f, "real"),
+            TyKind::Ref => write!(f, "ref"),
+            TyKind::Domain(symbol, ty_list) =>
+                write!(f, "{symbol}{ty_list:?}"),
+            TyKind::ResourceId(ty) =>
+                write!(f, "&{ty:?}"),
+            TyKind::Compound(compound_id) =>
+                write!(f, "{compound_id:?}"),
+            TyKind::Heap =>
+                write!(f, "heap"),
+        }
+    }
+}
+
+impl fmt::Debug for TyList<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, ty) in self.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            ty.fmt(f)?;
+        }
+        write!(f, "]")
+    }
 }

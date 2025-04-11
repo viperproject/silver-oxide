@@ -1,4 +1,4 @@
-use crate::{program::idx::LocalDefId, TiVec};
+use crate::{program::LocalDefId, TiVec};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Program(pub(super) TiVec<LocalDefId, Declaration>);
@@ -76,7 +76,7 @@ pub struct Define {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExpOrBlock {
     Exp(Exp),
-    Block(Block),
+    Block(StmtBlock),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -101,7 +101,24 @@ impl ArgOrType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ExpBlock(pub Exp);
+pub struct Block<T>(pub T);
+
+pub type HeapExpBlock = Block<HeapExp>;
+pub type ExpBlock = Block<Exp>;
+pub type StmtBlock = Block<Vec<Statement>>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResourceExp {
+    pub cond: Vec<Exp>,
+    pub acc: AccExp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HeapExp {
+    /// Empty when parsed, later stages pull out all `acc` expressions here.
+    pub res: Vec<ResourceExp>,
+    pub exp: Exp,
+}
 
 pub type Exp = Box<ExpKind>;
 
@@ -122,6 +139,7 @@ pub enum ExpKind {
     /// Quantified permissions. forperm x: T, y: U, ... [Perm] :: e1
     ForPerm(Vec<IdnDeclTyped>, ResAccess, Exp),
     /// acc(e)
+    /// Moved to `ResourceExp` after desugaring.
     Acc(AccExp),
     /// f(e1, e2, ..., en)
     FuncApp(Ident, Vec<Exp>),
@@ -149,6 +167,7 @@ pub enum ConstKind {
     Write,
     Epsilon,
     Wildcard,
+    SelfFramingHeap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -168,9 +187,7 @@ pub enum QuantifierKind {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AccExp {
     pub acc: LocAccess,
-    /// `Ok` is of type `Real` and represents the actual permission, `Err` is of
-    /// type `Bool` and represents a wildcard permission if true.
-    pub perm: Result<Exp, Exp>,
+    pub perm: Exp,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -226,34 +243,29 @@ pub enum ResAccess {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Block {
-    pub statements: Vec<Statement>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Statement {
     Assume(Exp),
     Assert(Exp),
     Refute(Exp),
-    Inhale(Exp),
-    Exhale(Exp),
-    Fold(Exp),
-    Unfold(Exp),
+    Inhale(HeapExp),
+    Exhale(HeapExp),
+    Fold(AccExp),
+    Unfold(AccExp),
     Goto(Ident),
-    Label(IdnDecl, Vec<Invariant>),
+    Label(IdnDecl, Invariant),
     Havoc(LocAccess),
     QuasiHavoc(Option<Exp>, Exp),
     QuasiHavocAll(Vec<IdnDeclTyped>, Option<Exp>, Exp),
     Var(Vec<IdnDeclTyped>, Option<Exp>),
-    While(Exp, Vec<WhileSpec>, Block),
-    If(Exp, Block, Vec<(Exp, Block)>, Option<Block>),
-    Wand(Ident, Exp),
-    Package(AccExp, Option<Block>),
+    While(Exp, Invariant, Vec<Decreases>, StmtBlock),
+    If(Exp, StmtBlock, Vec<(Exp, StmtBlock)>, Option<StmtBlock>),
+    // Wand(Ident, Exp),
+    Package(AccExp, Option<StmtBlock>),
     Apply(AccExp),
     Assign(Vec<Exp>, Exp),
     Fresh(Vec<Ident>),
-    Constraining(Vec<Ident>, Block),
-    Block(Block),
+    Constraining(Vec<Ident>, StmtBlock),
+    Block(StmtBlock),
     New(Ident, StarOrNames),
 }
 
@@ -273,7 +285,7 @@ pub enum IndexOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Invariant(pub Exp);
+pub struct Invariant(pub HeapExp);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WhileSpec {
@@ -305,8 +317,8 @@ pub struct Function {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Contract {
-    pub precondition: Exp,
-    pub postcondition: Exp,
+    pub precondition: HeapExp,
+    pub postcondition: HeapExp,
     pub decreases: Vec<Decreases>,
 }
 
@@ -336,14 +348,14 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Predicate {
     pub signature: Signature,
-    pub body: Option<ExpBlock>,
+    pub body: Option<HeapExpBlock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Method {
     pub signature: Signature,
     pub contract: Contract,
-    pub body: Option<Block>,
+    pub body: Option<StmtBlock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -1,4 +1,4 @@
-use program::{ResolveError, TyCtxt};
+use program::{ProcessError, TyCtxt};
 
 pub mod analysis;
 pub mod parse;
@@ -13,11 +13,7 @@ pub fn full(input: &str) -> Result<Silver, SilverError> {
     let mut program = parse::silver_parser::sil_program(input)?;
     parse::Macro::inline_macros(&mut program);
 
-    let mut tcx = TyCtxt::default();
-    tcx.calculate_fn_sigs(&program);
-    tcx.resolve_calls(&program)?;
-    tcx.desugar_program(&mut program);
-    tcx.calculate_members(&program);
+    let tcx = TyCtxt::new(&mut program)?;
 
     Ok(Silver {
         program,
@@ -30,7 +26,7 @@ type PegErr = peg::error::ParseError<<str as peg::Parse>::PositionRepr>;
 #[derive(Debug)]
 pub enum SilverError {
     ParseError(PegErr),
-    ResolveError(Vec<ResolveError>),
+    ProcessError(ProcessError),
 }
 
 impl From<PegErr> for SilverError {
@@ -39,9 +35,9 @@ impl From<PegErr> for SilverError {
     }
 }
 
-impl From<Vec<ResolveError>> for SilverError {
-    fn from(e: Vec<ResolveError>) -> Self {
-        SilverError::ResolveError(e)
+impl From<ProcessError> for SilverError {
+    fn from(e: ProcessError) -> Self {
+        SilverError::ProcessError(e)
     }
 }
 

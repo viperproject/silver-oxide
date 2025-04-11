@@ -1,6 +1,6 @@
 use num_bigint::BigInt;
 
-use crate::{parse::ast::*, program::idx::LocalDefId, TiVec};
+use crate::{parse::ast::*, program::LocalDefId, TiVec};
 
 macro_rules! walk_children {
     ($name:ident, $l:lifetime, $ty:ident) => {
@@ -27,7 +27,10 @@ pub trait AstWalker<'a>: Sized {
     walk_children!(walk_exp_or_block, 'a, ExpOrBlock);
     walk_children!(walk_idn_decl_typed, 'a, IdnDeclTyped);
     walk_children!(walk_arg_or_type, 'a, ArgOrType);
+    walk_children!(walk_heap_exp_block, 'a, HeapExpBlock);
     walk_children!(walk_exp_block, 'a, ExpBlock);
+    walk_children!(walk_resource_exp, 'a, ResourceExp);
+    walk_children!(walk_heap_exp, 'a, HeapExp);
     walk_children!(walk_exp, 'a, Exp);
     walk_children!(walk_exp_kind, 'a, ExpKind);
     walk_children!(walk_const, 'a, ConstKind);
@@ -38,7 +41,7 @@ pub trait AstWalker<'a>: Sized {
     walk_children!(walk_un_op, 'a, UnOp);
     walk_children!(walk_trigger, 'a, Trigger);
     walk_children!(walk_res_access, 'a, ResAccess);
-    walk_children!(walk_block, 'a, Block);
+    walk_children!(walk_block, 'a, StmtBlock);
     walk_children!(walk_statement, 'a, Statement);
     walk_children!(walk_star_or_names, 'a, StarOrNames);
     walk_children!(walk_index_op, 'a, IndexOp);
@@ -90,7 +93,10 @@ pub trait AstWalkerMut<'a>: Sized {
     walk_mut_children!(walk_mut_exp_or_block, 'a, ExpOrBlock);
     walk_mut_children!(walk_mut_idn_decl_typed, 'a, IdnDeclTyped);
     walk_mut_children!(walk_mut_arg_or_type, 'a, ArgOrType);
+    walk_mut_children!(walk_mut_heap_exp_block, 'a, HeapExpBlock);
     walk_mut_children!(walk_mut_exp_block, 'a, ExpBlock);
+    walk_mut_children!(walk_mut_resource_exp, 'a, ResourceExp);
+    walk_mut_children!(walk_mut_heap_exp, 'a, HeapExp);
     walk_mut_children!(walk_mut_exp, 'a, Exp);
     walk_mut_children!(walk_mut_exp_kind, 'a, ExpKind);
     walk_mut_children!(walk_mut_const, 'a, ConstKind);
@@ -101,7 +107,7 @@ pub trait AstWalkerMut<'a>: Sized {
     walk_mut_children!(walk_mut_un_op, 'a, UnOp);
     walk_mut_children!(walk_mut_trigger, 'a, Trigger);
     walk_mut_children!(walk_mut_res_access, 'a, ResAccess);
-    walk_mut_children!(walk_mut_block, 'a, Block);
+    walk_mut_children!(walk_mut_block, 'a, StmtBlock);
     walk_mut_children!(walk_mut_statement, 'a, Statement);
     walk_mut_children!(walk_mut_star_or_names, 'a, StarOrNames);
     walk_mut_children!(walk_mut_index_op, 'a, IndexOp);
@@ -275,7 +281,10 @@ walk_enum!(
     Arg(a),
     Type(t)
 );
+walk_struct!(HeapExpBlock, walk_heap_exp_block, walk_mut_heap_exp_block, 0);
 walk_struct!(ExpBlock, walk_exp_block, walk_mut_exp_block, 0);
+walk_struct!(ResourceExp, walk_resource_exp, walk_mut_resource_exp, cond, acc);
+walk_struct!(HeapExp, walk_heap_exp, walk_mut_heap_exp, res, exp);
 walk_box!(Exp, walk_exp, walk_mut_exp);
 walk_enum!(
     ExpKind,
@@ -308,7 +317,8 @@ walk_enum!(
     None,
     Write,
     Epsilon,
-    Wildcard
+    Wildcard,
+    SelfFramingHeap
 );
 
 walk_enum!(
@@ -367,7 +377,7 @@ walk_enum!(
     Loc(l),
     Exp(e)
 );
-walk_struct!(Block, walk_block, walk_mut_block, statements);
+walk_struct!(StmtBlock, walk_block, walk_mut_block, 0);
 walk_enum!(
     Statement,
     walk_statement,
@@ -385,9 +395,9 @@ walk_enum!(
     QuasiHavoc(e1, e2),
     QuasiHavocAll(vars, e1, e2),
     Var(vars, e),
-    While(e, specs, b),
+    While(e, specs, decs, b),
     If(e, b, branches, else_),
-    Wand(i, e),
+    // Wand(i, e),
     Package(e, b),
     Apply(e),
     Assign(lhs, rhs),

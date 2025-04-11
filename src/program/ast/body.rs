@@ -48,3 +48,9 @@ pub enum UpdateMode {
     AssumeInhale,
     AssertExhale,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct Location {
+    pub block: BasicBlock,
+    pub statement: usize,
+}

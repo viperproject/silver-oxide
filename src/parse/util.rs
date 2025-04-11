@@ -5,11 +5,11 @@ impl Program {
         self.0.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (crate::program::idx::LocalDefId, &Declaration)> {
+    pub fn iter(&self) -> impl Iterator<Item = (crate::program::LocalDefId, &Declaration)> {
         self.0.iter().enumerate().map(|(id, decl)| (id.into(), decl))
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (crate::program::idx::LocalDefId, &mut Declaration)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (crate::program::LocalDefId, &mut Declaration)> {
         self.0.iter_mut().enumerate().map(|(id, decl)| (id.into(), decl))
     }
 }
@@ -54,5 +54,65 @@ impl Declaration {
             Field(f) => Some(&f.0.name),
             Adt(a) => Some(&a.name),
         }
+    }
+}
+
+impl HeapExp {
+    pub(crate) fn new(exp: Exp) -> Self {
+        Self { res: vec![], exp }
+    }
+
+    pub(super) fn conjoin(exp: Vec<Exp>) -> Self {
+        let init = ConstKind::bool(true);
+        let exp = exp.into_iter().fold(init, ExpKind::conjoin);
+        Self::new(exp)
+    }
+}
+
+impl From<Vec<PrePostDec>> for Contract {
+    fn from(value: Vec<PrePostDec>) -> Self {
+        let mut precondition = ConstKind::bool(true);
+        let mut decreases = vec![];
+        for p in value {
+            match p {
+                PrePostDec::Pre(e) => precondition = ExpKind::conjoin(precondition, e),
+                PrePostDec::Decreases(d) => decreases.push(d),
+                _ => {}
+            }
+        }
+        let postcondition = HeapExp::new(ConstKind::bool(true));
+        Self { precondition: HeapExp::new(precondition), postcondition, decreases }
+    }
+}
+
+impl Contract {
+    pub(super) fn add_posts(mut self, posts: Vec<PrePostDec>) -> Self {
+        for p in posts {
+            match p {
+                PrePostDec::Post(e) => *self.postcondition.exp = match *self.postcondition.exp {
+                    ExpKind::Const(ConstKind::Bool(true)) => *e,
+                    post => ExpKind::BinOp(BinOp::And, Box::new(post), e),
+                },
+                PrePostDec::Decreases(d) => self.decreases.push(d),
+                _ => {}
+            }
+        }
+        self
+    }
+}
+
+impl<T> Block<T> {
+    pub(super) fn map<U>(self, f: impl FnOnce(T) -> U) -> Block<U> {
+        Block(f(self.0))
+    }
+}
+
+impl ExpKind {
+    fn conjoin(mut acc: Exp, new: Exp) -> Exp {
+        *acc = match *acc {
+            ExpKind::Const(ConstKind::Bool(true)) => *new,
+            other => ExpKind::BinOp(BinOp::And, Box::new(other), new),
+        };
+        acc
     }
 }

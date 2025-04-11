@@ -1,20 +1,25 @@
 use fxhash::{FxHashMap, FxHashSet};
 
-use crate::{parse::{AccExp, BinOp, ConstKind, ExpKind, HeapUpdateOp, UnOp}, program::{exp::{Exp, ExpLine, ExpLineKind, ExpOperand, HeapOp}, idx::{ExpLocal, LocalDefId}, ArgRef, Symbol, Ty, TyCtxt, TyKind}};
+use crate::{parse::{AccExp, BinOp, ConstKind, ExpKind, HeapUpdateOp, UnOp}, program::{exp::*, *}};
 
 use super::TranslationCtxt;
 
 impl<'tcx> TranslationCtxt<'_, 'tcx> {
     pub(crate) fn translate_exp(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>) -> Exp<'tcx> {
+        let heap = self.curr_heap.map_or_else(
+            |_| todo!(),
+            |heap| heap.then(|| ExpOperand::Const(self.tcx.interner.mk_const(&ConstKind::SelfFramingHeap)))
+        );
         let mut et = ExpTranslator {
             e: Default::default(),
             tcx: self,
             let_bound: FxHashMap::default(),
             curr_nest: 0,
-            heap: self.curr_heap.map(ExpOperand::Local),
+            heap,
         };
         let e = et.translate_full(exp, [ty]);
-        assert_eq!(e.result_ty(), ty);
+        let rt = e.result_ty();
+        assert!(ty == rt || ExpectedTys::tys_match(ty, rt), "type error: expected {ty:?}, found {rt:?}");
         e
     }
 }
@@ -51,7 +56,7 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
     fn translate(&mut self, exp: &crate::parse::Exp, tys: impl Into<ExpectedTys<'tcx>>) -> Operand<'tcx> {
         let tys = tys.into();
         let line = match &**exp {
-            ExpKind::Field(..) => unreachable!(),
+            ExpKind::Field(..) | ExpKind::Acc(..) => unreachable!(),
             ExpKind::Const(c) => {
                 let c = self.tcx.tcx.interner.mk_const(c);
                 let ty = self.tcx.tcx.const_ty(c);
@@ -85,20 +90,20 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 return r;
             }
             ExpKind::ForPerm(..) => todo!(),
-            ExpKind::Acc(..) => {
-                let c = self.tcx.tcx.interner.mk_const(&crate::parse::ConstKind::Bool(true));
-                let ty = self.tcx.tcx.const_ty(c);
-                tys.check_ty(ty);
-                return (ExpOperand::Const(c), ty);
-            }
             ExpKind::FuncApp(ident, args) => {
                 let callee = self.tcx.tcx.get_callee(ident);
+                let heap_dependent = self.tcx.tcx.is_heap_dependent(callee);
+                let heap = heap_dependent.then(|| self.heap.unwrap());
                 let sig = self.tcx.tcx.fn_sig(callee).unwrap();
 
-                let args = args.iter().zip(sig.args().1);
-                let args = args.map(|(arg, ty)| self.translate(arg, [*ty]).0).collect();
+                let caller_args = sig.caller_args().1;
+                assert_eq!(args.len(), caller_args.len());
+                let args = args.iter()
+                    .zip(caller_args)
+                    .map(|(arg, ty)| self.translate(arg, [*ty]).0)
+                    .chain(heap);
 
-                let kind = ExpLineKind::Call(callee, args);
+                let kind = ExpLineKind::Call(callee, args.collect());
                 let ty = sig.returns().1[0];
                 ExpLine { ty, kind }
             }
@@ -159,11 +164,9 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         assert_eq!(op, HeapUpdateOp::Unfold, "other heap ops not yet implemented");
         let heap = self.heap.expect("heap update without heap");
 
-        let heap_ = self.tcx.tcx.types.heap_;
-        let ty = self.tcx.tcx.interner.mk_ty_from_kind(TyKind::ResourceId(heap_));
+        let ty = self.tcx.any_resource_id();
         let loc = self.translate(&acc.acc.loc, [ty]);
-        let perm = acc.perm.as_ref().ok().unwrap();
-        let perm = self.translate(perm, [self.tcx.tcx.types.real_]);
+        let perm = self.translate(&acc.perm, [self.tcx.tcx.types.real_]);
         let kind = ExpLineKind::HeapUpdate(op, heap, loc.0, perm.0);
         let line = ExpLine { ty: self.tcx.tcx.types.heap_, kind };
         let l = self.e.lines.push_and_get_key(line);

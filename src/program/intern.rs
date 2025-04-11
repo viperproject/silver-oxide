@@ -34,6 +34,7 @@ impl<'tcx> Interner<'tcx> {
             ConstKind::Write => &ConstKind::Write,
             ConstKind::Epsilon => &ConstKind::Epsilon,
             ConstKind::Wildcard => &ConstKind::Wildcard,
+            ConstKind::SelfFramingHeap => &ConstKind::SelfFramingHeap,
             ConstKind::Int(..) => self.0.const_.intern_ref(const_),
         };
         Const(Interned(const_))

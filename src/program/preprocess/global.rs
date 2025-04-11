@@ -4,18 +4,58 @@ use crate::parse::{ArgOrType, Declaration, DomainElementKind, Method, Program};
 
 use crate::{program::*, TiVec};
 
-use super::idx::LocalDefId;
-
 #[derive(Debug, Default)]
 pub struct Globals<'tcx> {
-    pub(crate) data: TiVec<LocalDefId, DefData<'tcx>>,
+    pub(crate) data: TiVec<LocalDefId, MemberData<'tcx>>,
     pub(crate) resolved: FxHashMap<Symbol<'tcx>, LocalDefId>,
+    pub(crate) sigs: TiVec<LocalDefId, Option<FnSig<'tcx>>>,
 }
 
-#[derive(Debug)]
-pub struct DefData<'tcx> {
-    pub kind: MemberKind,
-    pub fn_sig: Option<FnSig<'tcx>>,
+impl<'tcx> Globals<'tcx> {
+    /// The only preprocessing run before de-sugaring.
+    pub(crate) fn calculate_kinds(&mut self, interner: &Interner<'tcx>, program: &Program) {
+        assert_eq!(self.data.len(), 0);
+        self.data.reserve_exact(program.len());
+        for (id, decl) in program.iter() {
+            let id = LocalDefId::from(id);
+            let data = self.calculate_kind(interner, id, decl);
+            let new = self.data.push_and_get_key(data);
+            assert_eq!(new, id);
+        }
+    }
+
+    fn calculate_kind(&mut self, interner: &Interner<'tcx>, id: LocalDefId, decl: &Declaration) -> MemberData<'tcx> {
+        let name = decl.idn_decl().map(|d| interner.mk_symbol(&d.0));
+        if let Some(name) = name {
+            let old = self.resolved.insert(name, id);
+            assert!(old.is_none(), "redeclaration of {name:?}");
+        }
+        use Declaration::*;
+        let mut domain = None;
+        let mut resolve_domain = |d| domain = Some(self.resolved[&interner.mk_symbol(d)].into());
+        let sig = decl.signature().map(|sig|
+            DeclSig { name: name.unwrap(), args: Some(sig.args.len()), rets: sig.ret.len() }
+        );
+        let kind = match decl {
+            Import(..) => MemberKind::Import,
+            Define(..) => MemberKind::Define,
+            Domain(..) => MemberKind::Domain,
+            DomainElement(crate::parse::DomainElement { domain, kind: DomainElementKind::Axiom(..) }) => {
+                resolve_domain(domain);
+                MemberKind::DomainAxiom
+            }
+            DomainElement(crate::parse::DomainElement { domain, kind: DomainElementKind::Function(..) }) => {
+                resolve_domain(domain);
+                MemberKind::DomainFunction
+            }
+            Field(..) => MemberKind::Field,
+            Predicate(..) => MemberKind::Predicate,
+            Function(..) => MemberKind::Function,
+            Method(..) => MemberKind::Method,
+            Adt(_) => todo!("adts not supported yet"),
+        };
+        MemberData { kind, domain, sig }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -31,12 +71,28 @@ pub enum MemberKind {
     Method,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct MemberData<'tcx> {
+    pub kind: MemberKind,
+    pub domain: Option<DefId>,
+    pub sig: Option<DeclSig<'tcx>>,
+}
+
+/// The signature as it is declared
+#[derive(Debug, Clone, Copy)]
+pub struct DeclSig<'tcx> {
+    pub name: Symbol<'tcx>,
+    pub args: Option<usize>,
+    pub rets: usize,
+}
+
+/// The signature with heap arguments added
 #[derive(Debug)]
 pub struct FnSig<'tcx> {
-    pub name: Symbol<'tcx>,
     arg_ref: Vec<ArgRef<'tcx>>,
     args: TyList<'tcx>,
     returns: Option<MethodData<'tcx>>,
+    pub heap_dependent: bool,
 }
 
 #[derive(Debug)]
@@ -96,42 +152,20 @@ pub enum ArgRef<'tcx> {
 }
 
 impl<'tcx> TyCtxt<'tcx> {
+    /// Run after de-sugaring.
     pub(crate) fn calculate_fn_sigs(&mut self, program: &Program) {
-        assert_eq!(self.globals.data.len(), 0);
-        self.globals.data.reserve_exact(program.len());
+        assert_eq!(self.globals.sigs.len(), 0);
+        self.globals.sigs.reserve_exact(program.len());
         for (id, decl) in program.iter() {
             let id = LocalDefId::from(id);
-            let data = self.calculate_def_data(id, decl);
-            let new = self.globals.data.push_and_get_key(data);
+            let sig = self.calculate_fn_sig(id, decl);
+            let new = self.globals.sigs.push_and_get_key(sig);
             assert_eq!(new, id);
         }
     }
 
-    fn calculate_def_data(&mut self, id: LocalDefId, decl: &Declaration) -> DefData<'tcx> {
-        let fn_sig = self.calculate_fn_sig(id, decl);
-        use Declaration::*;
-        let kind = match decl {
-            Import(..) => MemberKind::Import,
-            Define(..) => MemberKind::Define,
-            Domain(..) => MemberKind::Domain,
-            DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Axiom(_), .. }) =>
-                MemberKind::DomainAxiom,
-            DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Function(..), .. }) =>
-                MemberKind::DomainFunction,
-            Field(..) => MemberKind::Field,
-            Predicate(..) => MemberKind::Predicate,
-            Function(..) => MemberKind::Function,
-            Method(..) => MemberKind::Method,
-            Adt(_) => unreachable!(),
-        };
-        DefData { kind, fn_sig }
-    }
-
     fn calculate_fn_sig(&mut self, id: LocalDefId, decl: &Declaration) -> Option<FnSig<'tcx>> {
         let sig = decl.signature()?;
-        let name = self.interner.mk_symbol(&sig.name.0);
-        let old = self.globals.resolved.insert(name, id);
-        assert!(old.is_none(), "redeclaration of {name:?}");
 
         let intern_arg = |a: &ArgOrType| self.translate_type(a.ty());
         let arg_ref = |a: &ArgOrType| match a {
@@ -150,9 +184,12 @@ impl<'tcx> TyCtxt<'tcx> {
 
         use Declaration::*;
         let (heap_arg, ret) = match decl {
-            Function(..) => {
+            Function(f) => {
                 assert_eq!(sig.ret.len(), 1);
-                (Some(mk_compound(Some(false))), Ok(intern_arg(&sig.ret[0])))
+                let heap_dependent = !f.contract.precondition.res.is_empty();
+                // TODO: should this be a `Heap` type arg?
+                let earg = heap_dependent.then(|| mk_compound(Some(false)));
+                (earg, Ok(intern_arg(&sig.ret[0])))
             }
             DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Function(..), .. }) => {
                 assert_eq!(sig.ret.len(), 1);
@@ -173,7 +210,9 @@ impl<'tcx> TyCtxt<'tcx> {
                 let ret = sig.ret.iter().map(&intern_arg).chain([mk_compound(Some(true))]).collect();
                 let returns = self.interner.mk_ty_list(ret);
                 let data = self.calculate_method_data(id, m, ret_ref, returns);
-                (Some(mk_compound(Some(false))), Err(data))
+                // TODO: this should be a `Heap` type arg?
+                let earg = mk_compound(Some(false));
+                (Some(earg), Err(data))
             }
             Adt(_) => todo!(),
             _ => unreachable!(),
@@ -189,14 +228,14 @@ impl<'tcx> TyCtxt<'tcx> {
         assert_eq!(arg_ref.len(), args.len());
 
         Some(FnSig {
-            name,
             arg_ref,
             args,
             returns: ret.err(),
+            heap_dependent: heap_arg.is_some(),
         })
     }
 
-    fn calculate_method_data(&self, id: LocalDefId, method: &Method, ret_ref: Vec<ArgRef<'tcx>>, returns: TyList<'tcx>) -> MethodData<'tcx> {
+    fn calculate_method_data(&self, _id: LocalDefId, _method: &Method, ret_ref: Vec<ArgRef<'tcx>>, returns: TyList<'tcx>) -> MethodData<'tcx> {
         assert_eq!(returns.len(), ret_ref.len());
         MethodData {
             ret_ref,

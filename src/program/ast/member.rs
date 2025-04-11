@@ -32,15 +32,15 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 
     fn calculate_member(&self, id: LocalDefId, decl: &Declaration) -> Member<'tcx> {
-        let sig = self.fn_sig(id);
         let mut tcx = TranslationCtxt::new(self, id);
         use Declaration::*;
         match decl {
             Import(..) => Member::Import,
             Define(..) => Member::Define,
             Domain(..) => Member::Domain,
-            DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Axiom(a), .. }) => {
-                let a = tcx.translate_exp(&a.exp.0, self.types.bool_);
+            DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Axiom(ax), .. }) => {
+                let a = tcx.translate_exp(&ax.exp.0, self.types.bool_);
+                eprintln!("[Translate] axiom {:?}\n{a:?}", ax.name);
                 Member::DomainAxiom(a)
             }
             DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Function(..), .. }) =>
@@ -48,23 +48,31 @@ impl<'tcx> TyCtxt<'tcx> {
             Field(..) => Member::Field,
             Function(f) => {
                 let pre = tcx.translate_resource(&f.contract.precondition);
+                eprintln!("[Translate] fn pre {:?}\n{pre:?}", f.signature.name.0.0);
                 tcx.add_return();
-                tcx.set_heap();
-                let post = tcx.translate_exp(&f.contract.postcondition, self.types.bool_);
+                let post = tcx.translate_exp(&f.contract.postcondition.exp, self.types.bool_);
+                eprintln!("[Translate] fn post {:?}\n{post:?}", f.signature.name.0.0);
                 let body = f.body.as_ref().map(|b| {
                     let ty = tcx.fn_result();
-                    tcx.translate_exp(&b.0, ty)
+                    let body = tcx.translate_exp(&b.0, ty);
+                    eprintln!("[Translate] fn body {:?}\n{body:?}", f.signature.name.0.0);
+                    body
                 });
                 Member::Function(pre, post, body)
             }
             Predicate(p) => {
                 let body = p.body.as_ref().map(|b| tcx.translate_resource(&b.0));
+                if let Some(body) = &body {
+                    eprintln!("[Translate] predicate {:?}\n{body:?}", p.signature.name.0.0);
+                }
                 Member::Predicate(body)
             }
             Method(m) => {
                 let pre = tcx.translate_resource(&m.contract.precondition);
+                eprintln!("[Translate] method pre {:?}\n{pre:?}", m.signature.name.0.0);
                 tcx.add_return();
                 let post = tcx.translate_resource(&m.contract.postcondition);
+                eprintln!("[Translate] method post {:?}\n{post:?}", m.signature.name.0.0);
                 let body = m.body.as_ref().map(|b| tcx.translate_body(b));
                 Member::Method(pre, post, body)
             }

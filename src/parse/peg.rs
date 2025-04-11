@@ -80,7 +80,7 @@ peg::parser! {
 
         rule predicate_access() -> LocAccess = loc: func_app() { LocAccess { loc: Box::new(loc) } }
 
-        rule predicate_perm() -> AccExp = acc_exp() / acc:predicate_access() { AccExp { acc, perm: Ok(ConstKind::write()) } }
+        rule predicate_perm() -> AccExp = acc_exp() / acc:predicate_access() { AccExp { acc, perm: ConstKind::write() } }
 
         // TODO: only accept expressions that end with a .field
         rule field_access() -> ExpKind = suffix_exp()
@@ -90,7 +90,7 @@ peg::parser! {
         rule res_access() -> ResAccess = e:magic_wand_exp() { ResAccess::Exp(e) } / l:loc_access() { ResAccess::Loc(l) }
 
         rule acc_exp() -> AccExp
-            = "acc" _ "(" _ acc:loc_access() _ perm:("," _ e:exp() { e })? _ ")" { AccExp { acc, perm: Ok(perm.unwrap_or_else(ConstKind::write)) } }
+            = "acc" _ "(" _ acc:loc_access() _ perm:("," _ e:exp() { e })? _ ")" { AccExp { acc, perm: perm.unwrap_or_else(ConstKind::write) } }
 
         rule trigger() -> Trigger = "{" _ es:(exp() ** comma()) _ "}" { Trigger { exp: es } }
 
@@ -124,7 +124,7 @@ peg::parser! {
 
         rule magic_wand_exp() -> AccExp = loc:exp() { match *loc {
             ExpKind::Acc(acc) => acc,
-            _ => AccExp { acc: LocAccess { loc }, perm: Ok(ConstKind::write()) }
+            _ => AccExp { acc: LocAccess { loc }, perm: ConstKind::write() }
         } }
 
         rule func_app() -> ExpKind = id:ident() (" ")* "(" _ es:(exp() ** comma()) _ ")" { ExpKind::FuncApp(id, es) }
@@ -239,20 +239,20 @@ peg::parser! {
 
         /// Statements
 
-        rule block() -> Block = "{" _ s:(s:annotated(<statement()>) opt_semi() { s})* "}" { Block { statements: s } }
+        rule block() -> StmtBlock = "{" _ s:(s:annotated(<statement()>) opt_semi() { s})* "}" { Block(s) }
 
-        rule block_exp() -> ExpBlock = "{" _ e:exp() _ "}" { ExpBlock(e) }
+        rule block_exp() -> ExpBlock = "{" _ e:exp() _ "}" { Block(e) }
 
         rule statement() -> Statement
             = kw(<"assert">) _ e:exp() { Statement::Assert(e)}
             / kw(<"refute">) _ e:exp() { Statement::Refute(e)}
             / kw(<"assume">) _ e:exp() { Statement::Assume(e)}
-            / kw(<"inhale">) _ e:exp() { Statement::Inhale(e)}
-            / kw(<"exhale">) _ e:exp() { Statement::Exhale(e)}
-            / kw(<"fold">) _ e:predicate_perm() { Statement::Fold(Box::new(ExpKind::Acc(e)))}
-            / kw(<"unfold">) _ e:predicate_perm() { Statement::Unfold(Box::new(ExpKind::Acc(e)))}
+            / kw(<"inhale">) _ e:exp() { Statement::Inhale(HeapExp::new(e))}
+            / kw(<"exhale">) _ e:exp() { Statement::Exhale(HeapExp::new(e))}
+            / kw(<"fold">) _ e:predicate_perm() { Statement::Fold(e)}
+            / kw(<"unfold">) _ e:predicate_perm() { Statement::Unfold(e)}
             / kw(<"goto">) _ id:label() { Statement::Goto(id)}
-            / kw(<"label">) _ id:label() _ invs:(invariant() ** _) { Statement::Label(IdnDecl(id), invs)}
+            / kw(<"label">) _ id:label() _ invs:(invariant() ** _) { Statement::Label(IdnDecl(id), Invariant(HeapExp::conjoin(invs)))}
             / kw(<"havoc">) _ l:loc_access() { Statement::Havoc(l)}
             / kw(<"quasihavoc">) _ a:(e:exp() _ "==>" {e})? _ b:exp() { Statement::QuasiHavoc(a, b)}
             / kw(<"quasihavocall">) _ args:(formal_arg() ++ _) _ "::" _ a:(e:exp() _ "==>" {e})? _ b:exp() { Statement::QuasiHavocAll(args, a, b)}
@@ -279,17 +279,18 @@ peg::parser! {
 
         rule while_statement() -> Statement = "while" _ "(" _ cond:exp() _ ")" _ spec:semied(<while_spec_item()>)* _ block:block()
             {
-                Statement::While(cond, spec, block)
+                let c = Contract::from(spec);
+                Statement::While(cond, Invariant(c.precondition), c.decreases, block)
             }
 
-        rule while_spec_item() -> WhileSpec = i:invariant() { WhileSpec::Inv(i) } / d:decreases() { WhileSpec::Dec(d) }
+        rule while_spec_item() -> PrePostDec = i:invariant() { PrePostDec::Pre(i) } / d:decreases() { d }
 
-        rule invariant() -> Invariant = "invariant" _ e:exp() { Invariant(e) }
+        rule invariant() -> Exp = "invariant" _ e:exp() { e }
 
         rule if_statement() -> Statement = "if" _ "(" _ cond:exp() _ ")" _ then:block() _ elsifs:(elsif_block()** _) _ else_:("else" _ else_:block() { else_})?
             { Statement::If(cond, then, elsifs, else_) }
 
-        rule elsif_block() -> (Exp, Block) =
+        rule elsif_block() -> (Exp, StmtBlock) =
             "elseif" _ "(" _ exp:exp() _ ")" _ block:block() { (exp, block)}
 
         rule assign_stmt() -> Statement = tgts:(tgts:(assign_target() ++ comma()) _ ":=" { tgts })? _ call:exp()
@@ -299,9 +300,9 @@ peg::parser! {
 
         rule fresh_statement() -> () = "fresh" _ ident() ++ comma()
 
-        rule wand_statement() -> Statement = "wand" _ name:ident() _ ":" _ exp:exp() { Statement::Wand(name, exp) }
-            / "package" _ exp:magic_wand_exp() _ block:block()? { Statement::Package(exp, block) }
-            / "apply" _ exp:magic_wand_exp() { Statement::Apply(exp) }
+        rule wand_statement() -> Statement =// "wand" _ name:ident() _ ":" _ exp:exp() { Statement::Wand(name, exp) } /
+            "package" _ exp:magic_wand_exp() _ block:block()? { Statement::Package(exp, block) } /
+            "apply" _ exp:magic_wand_exp() { Statement::Apply(exp) }
 
         rule constraining_block() -> () = "constraining" _ "(" _ ident() ++ comma() _ ")" _ block()
 
@@ -366,7 +367,7 @@ peg::parser! {
             { Signature { name: id, args, ret: vec!(ArgOrType::Type(ret)) } }
 
         rule predicate() -> Predicate = "predicate" _ id:idndecl() _ args:tupled(<decl_named_formal_arg()>) _ exp:block_exp()?
-            { Predicate { signature: Signature { name: id, args, ret: Vec::new() }, body: exp } }
+            { Predicate { signature: Signature { name: id, args, ret: Vec::new() }, body: exp.map(|e| e.map(HeapExp::new)) } }
 
         rule formal_returns()  -> Vec<ArgOrType> = "returns" _ rets:tupled(<decl_named_formal_arg()>) { rets }
 
@@ -397,39 +398,13 @@ peg::parser! {
 
         rule postcondition() -> PrePostDec = "ensures" _ e:exp() { PrePostDec::Post(e) }
 
-        rule decreases() -> Decreases = "decreases" _ d:decreases_kind()? _ e:("if" _ e:exp() { e })? { Decreases { kind: d, guard: e } }
+        rule decreases() -> PrePostDec = "decreases" _ d:decreases_kind()? _ e:("if" _ e:exp() { e })? { PrePostDec::Decreases(Decreases { kind: d, guard: e }) }
 
         rule decreases_kind() -> DecreasesKind = "*" { DecreasesKind::Star } / "_" { DecreasesKind::Underscore } / e:(exp() ** comma()) { DecreasesKind::Exp(e) }
 
         rule contract() -> Contract =
-            pres:(p:(precondition()  / d:decreases() { PrePostDec::Decreases(d) }) opt_semi() {p})* _ post:(p:(postcondition() / d:decreases() { PrePostDec::Decreases(d) } ) opt_semi() {p})*
-            {
-                let mut contract = Contract { precondition: ConstKind::bool(true), postcondition: ConstKind::bool(true), decreases: vec![] };
-                for p in pres {
-                    match p {
-                        PrePostDec::Pre(e) => *contract.precondition = match *contract.precondition {
-                            ExpKind::Const(ConstKind::Bool(true)) => *e,
-                            pre => ExpKind::BinOp(BinOp::And, Box::new(pre), e),
-                        },
-                        PrePostDec::Decreases(d) => contract.decreases.push(d),
-                        _ => {}
-                    }
-                }
-
-                for p in post {
-                    match p {
-                        PrePostDec::Post(e) => *contract.postcondition = match *contract.postcondition {
-                            ExpKind::Const(ConstKind::Bool(true)) => *e,
-                            post => ExpKind::BinOp(BinOp::And, Box::new(post), e),
-                        },
-                        PrePostDec::Decreases(d) => contract.decreases.push(d),
-                        _ => {}
-                    }
-                }
-
-                contract
-
-             }
+            pres:(p:(precondition()  / d:decreases() { d }) opt_semi() {p})* _ posts:(p:(postcondition() / d:decreases() { d } ) opt_semi() {p})*
+            { Contract::from(pres).add_posts(posts) }
 
 
     }
