@@ -44,6 +44,7 @@ pub trait AstWalker<'a>: Sized {
     walk_children!(walk_res_access, 'a, ResAccess);
     walk_children!(walk_block, 'a, StmtBlock);
     walk_children!(walk_statement, 'a, Statement);
+    walk_children!(walk_assign_rhs, 'a, AssignRhs);
     walk_children!(walk_star_or_names, 'a, StarOrNames);
     walk_children!(walk_index_op, 'a, IndexOp);
     walk_children!(walk_invariant, 'a, Invariant);
@@ -113,6 +114,7 @@ pub trait AstWalkerMut<'a>: Sized {
     walk_mut_children!(walk_mut_res_access, 'a, ResAccess);
     walk_mut_children!(walk_mut_block, 'a, StmtBlock);
     walk_mut_children!(walk_mut_statement, 'a, Statement);
+    walk_mut_children!(walk_mut_assign_rhs, 'a, AssignRhs);
     walk_mut_children!(walk_mut_star_or_names, 'a, StarOrNames);
     walk_mut_children!(walk_mut_index_op, 'a, IndexOp);
     walk_mut_children!(walk_mut_invariant, 'a, Invariant);
@@ -409,14 +411,18 @@ walk_enum!(
     Var(vars, e),
     While(e, specs, decs, b),
     If(e, then, else_),
-    // Wand(i, e),
     Package(e, b),
     Apply(e),
     Assign(lhs, rhs),
-    Fresh(vars),
-    // Constraining(vars, b),
-    Block(b),
-    New(i, star_or_names)
+    Block(b)
+);
+walk_enum!(
+    AssignRhs,
+    walk_assign_rhs,
+    walk_mut_assign_rhs,
+    New(n),
+    Call(i, args),
+    Exp(e)
 );
 walk_enum!(
     StarOrNames,

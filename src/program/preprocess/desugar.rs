@@ -101,6 +101,20 @@ impl<'a> AstWalkerMut<'a> for Desugar<'_, '_> {
         self.in_assert_assume = false;
     }
 
+    fn walk_mut_assign_rhs(&mut self, ast: &'a mut AssignRhs) {
+        if let AssignRhs::Call(ident, ..) = ast {
+            let callee = self.tcx.get_callee(ident);
+            if !self.tcx.is_method(callee) {
+                let call = core::mem::replace(ast, AssignRhs::New(StarOrNames::Star));
+                let AssignRhs::Call(ident, args) = call else {
+                    unreachable!();
+                };
+                *ast = AssignRhs::Exp(Box::new(ExpKind::FuncApp(ident, args)));
+            }
+        }
+        ast.walk_mut_children(self);
+    }
+
     fn walk_mut_acc_exp(&mut self, ast: &'a mut AccExp) {
         // Skip over `loc` itself to avoid adding a `Deref` for field
         // accesses/extra `ExpKind::Acc` for predicate.
@@ -218,6 +232,8 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
                 let impure = impure.unwrap().with_cond(self, c, t, e);
                 return Some(impure);
             }
+            // Need to insert this into `impure` somehow.
+            ExpKind::LetIn(..) => todo!(),
             _ => (),
         };
         ast.walk_mut_children(self);
@@ -293,17 +309,11 @@ struct ImpureCollector<'r> {
 impl<'r> ImpureCollector<'r> {
     fn push(&mut self, mut acc: AccExp, mk_wildcard: bool) {
         let mut cond: Vec<_> = self.pc.iter().copied()
-            .map(|(neg, c)| {
-                if neg {
-                    Box::new(ExpKind::UnOp(UnOp::Not, c.clone()))
-                } else {
-                    c.clone()
-                }
-            })
+            .map(|(neg, c)| (neg, c.clone()))
             .collect();
         if mk_wildcard {
             let c = ExpKind::BinOp(BinOp::Lt, ExpKind::none(), acc.perm);
-            cond.push(Box::new(c));
+            cond.push((false, Box::new(c)));
             acc.perm = ExpKind::wildcard();
         }
         self.res.push(ResourceExp { cond, acc });

@@ -77,7 +77,7 @@ pub enum TyKind<'tcx> {
 //     pub deref: Result<Ty<'tcx>, DefId>,
 // }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompoundId {
     /// The `Predicate`/`Function`(/`Method`?)
     pub did: DefId,
@@ -117,5 +117,17 @@ impl fmt::Debug for TyList<'_> {
             ty.fmt(f)?;
         }
         write!(f, "]")
+    }
+}
+
+impl fmt::Debug for CompoundId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self.did)?;
+        if let Some(false) = self.contract {
+            write!(f, ".pre")?;
+        } else if let Some(true) = self.contract {
+            write!(f, ".post")?;
+        }
+        Ok(())
     }
 }

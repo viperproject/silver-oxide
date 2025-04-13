@@ -256,12 +256,10 @@ peg::parser! {
             / kw(<"havoc">) _ l:loc_access() { Statement::Havoc(l)}
             / kw(<"quasihavoc">) _ a:(e:exp() _ "==>" {e})? _ b:exp() { Statement::QuasiHavoc(a, b)}
             / kw(<"quasihavocall">) _ args:(formal_arg() ++ _) _ "::" _ a:(e:exp() _ "==>" {e})? _ b:exp() { Statement::QuasiHavocAll(args, a, b)}
-            / kw(<"var">) _ args:(formal_arg() ** comma()) _ e:(":=" _ e:exp() {e})? { Statement::Var(args, e)}
+            / kw(<"var">) _ args:(formal_arg() ** comma()) _ e:(":=" _ e:assign_rhs() {e})? { Statement::Var(args, e)}
             / while_statement()
             / if_statement()
             / wand_statement()
-            / name:ident() _ ":=" _ "new" _ "(" _ "*" _ ")" { Statement::New(name, StarOrNames::Star) }
-            / name:ident() _ ":=" _ "new" _ "(" _ args:(ident() ** comma()) _ ")" { Statement::New(name, StarOrNames::Names(args))}
             / assign_stmt()
             // Seem dead?
             // / fresh_statement()
@@ -296,12 +294,18 @@ peg::parser! {
         rule elsif_block() -> (Exp, StmtBlock) =
             "elseif" _ "(" _ exp:exp() _ ")" _ block:block() { (exp, block)}
 
-        rule assign_stmt() -> Statement = tgts:(tgts:(assign_target() ++ comma()) _ ":=" { tgts })? _ call:exp()
-            { Statement::Assign(tgts.unwrap_or_default(), call) }
+        rule assign_stmt() -> Statement = tgts:(tgts:(assign_target() ++ comma()) _ ":=" { tgts })? _ rhs:assign_rhs()
+            { Statement::Assign(tgts.unwrap_or_default(), rhs) }
 
         rule assign_target() -> Exp = e:suffix_exp() { Box::new(e) }
 
-        rule fresh_statement() -> () = "fresh" _ ident() ++ comma()
+        rule assign_rhs() -> AssignRhs =
+              "new" _ "(" _ "*" _ ")" { AssignRhs::New(StarOrNames::Star) }
+            / "new" _ "(" _ args:(ident() ** comma()) _ ")" { AssignRhs::New(StarOrNames::Names(args))}
+            / e:exp() { match *e {
+                ExpKind::FuncApp(id, args) => AssignRhs::Call(id, args),
+                _ => AssignRhs::Exp(e)
+            }}
 
         rule wand_statement() -> Statement =// "wand" _ name:ident() _ ":" _ exp:exp() { Statement::Wand(name, exp) } /
             "package" _ exp:magic_wand_exp() _ block:block()? { Statement::Package(exp, block) } /

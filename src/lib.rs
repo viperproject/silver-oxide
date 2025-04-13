@@ -1,6 +1,5 @@
 use program::{ProcessError, TyCtxt};
 
-pub mod analysis;
 pub mod parse;
 pub mod program;
 

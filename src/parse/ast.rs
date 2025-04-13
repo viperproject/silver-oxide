@@ -109,7 +109,7 @@ pub type StmtBlock = Block<Vec<Statement>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceExp {
-    pub cond: Vec<Exp>,
+    pub cond: Vec<(bool, Exp)>,
     pub acc: AccExp,
 }
 
@@ -266,17 +266,20 @@ pub enum Statement {
     Havoc(LocAccess),
     QuasiHavoc(Option<Exp>, Exp),
     QuasiHavocAll(Vec<IdnDeclTyped>, Option<Exp>, Exp),
-    Var(Vec<IdnDeclTyped>, Option<Exp>),
+    Var(Vec<IdnDeclTyped>, Option<AssignRhs>),
     While(Exp, Invariant, Vec<Decreases>, StmtBlock),
     If(Exp, StmtBlock, Option<StmtBlock>),
-    // Wand(Ident, Exp),
     Package(AccExp, Option<StmtBlock>),
     Apply(AccExp),
-    Assign(Vec<Exp>, Exp),
-    Fresh(Vec<Ident>),
-    // Constraining(Vec<Ident>, StmtBlock),
+    Assign(Vec<Exp>, AssignRhs),
     Block(StmtBlock),
-    New(Ident, StarOrNames),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AssignRhs {
+    Exp(Exp),
+    Call(Ident, Vec<Exp>),
+    New(StarOrNames),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

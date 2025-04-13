@@ -75,6 +75,9 @@ impl<'tcx> TyCtxt<'tcx> {
                 let post = tcx.translate_resource(&m.contract.postcondition, None);
                 eprintln!("[Translate] method post {:?}\n{post:?}", m.signature.name.0.0);
                 let body = m.body.as_ref().map(|b| tcx.translate_body(b));
+                if let Some(body) = &body {
+                    eprintln!("[Translate] method body {:?}\n{body:?}", m.signature.name.0.0);
+                }
                 Member::Method(pre, post, body)
             }
             Adt(..) => todo!(),

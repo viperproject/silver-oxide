@@ -39,6 +39,7 @@ macro_rules! idx {
 
 idx!(Local, "_{}");
 idx!(ExpLocal, "e{}");
+idx!(QuantLocal, "q{}");
 
 idx!(BasicBlock, "bb{}");
 idx!(Label, "lbl{}");

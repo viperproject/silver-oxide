@@ -1,10 +1,10 @@
-use crate::{HashMap, HashSet};
+use crate::{HashMap, HashSet, TiVec};
 
 use crate::{parse::{AccExp, BinOp, ConstHeapKind, ConstKind, ExpKind, HeapUpdateOp, UnOp}, program::{exp::*, *}};
 
 use super::TranslationCtxt;
 
-impl<'tcx> TranslationCtxt<'_, 'tcx> {
+impl<'b, 'tcx> TranslationCtxt<'b, 'tcx> {
     pub(crate) fn translate_exp(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>, have_heap: bool) -> Exp<'tcx> {
         let heap = have_heap.then(|| {
             ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::Heap(ConstHeapKind::Old)))
@@ -13,20 +13,26 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
     }
 
     pub(super) fn translate_exp_inner(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>, heap: Option<ExpOperand<'tcx>>) -> Exp<'tcx> {
-        let mut et = ExpTranslator {
-            tcx: self,
-            e: Default::default(),
-            evaluated: HashMap::default(),
-            added_at_level: Vec::new(),
-
-            let_bound: HashMap::default(),
-            curr_nest: 0,
-            heap,
-        };
+        let mut et = self.prepare_translator(heap);
         let e = et.translate_full(exp, [ty]);
         let rt = e.result_ty();
         assert!(ExpectedTys::tys_match(ty, rt), "type error: expected {ty:?}, found {rt:?}");
         e
+    }
+
+    pub(super) fn prepare_translator(&self, heap: Option<ExpOperand<'tcx>>) -> ExpTranslator<'_, 'b, 'tcx> {
+        ExpTranslator {
+            tcx: self,
+            e: Default::default(),
+
+            curr_cond: Some(Vec::new()),
+            evaluated: HashMap::default(),
+            conditionless: vec![TiVec::default()],
+
+            let_bound: HashMap::default(),
+            curr_nest: 0,
+            heap,
+        }
     }
 }
 
@@ -35,8 +41,10 @@ type Operand<'tcx> = (ExpOperand<'tcx>, Ty<'tcx>);
 pub(super) struct ExpTranslator<'a, 'b, 'tcx> {
     pub(super) tcx: &'a TranslationCtxt<'b, 'tcx>,
     e: Exp<'tcx>,
-    evaluated: HashMap<ExpLineKind<'tcx>, (u16, ExpLocal, Ty<'tcx>)>,
-    added_at_level: Vec<ExpLineKind<'tcx>>,
+    evaluated: HashMap<ExpLine<'tcx>, (ExpLocal, Ty<'tcx>, u16)>,
+
+    pub(super) curr_cond: Option<Vec<ExpCond<'tcx>>>,
+    pub(super) conditionless: Vec<TiVec<ExpLocal, bool>>,
 
     let_bound: HashMap<Symbol<'tcx>, Operand<'tcx>>,
     curr_nest: u16,
@@ -44,6 +52,32 @@ pub(super) struct ExpTranslator<'a, 'b, 'tcx> {
 }
 
 impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
+    pub(super) fn translate_cond(&mut self, neg: bool, exp: &crate::parse::Exp) {
+        if self.curr_cond.is_none() {
+            return;
+        }
+
+        let cond = self.translate_chain(exp, self.tcx.tcx.types.bool_);
+        if let Some(c) = cond.as_const() {
+            if c.as_bool().unwrap() == neg {
+                self.curr_cond = None;
+            } else {
+                return;
+            }
+        }
+        self.curr_cond.as_mut().unwrap().push(ExpCond { cond, neg: false });
+    }
+
+    pub(super) fn translate_chain(&mut self, exp: &crate::parse::Exp, ty: Ty<'tcx>) -> ExpOperand<'tcx> {
+        let (nd, rt) = self.translate(exp, [ty]);
+        assert!(ExpectedTys::tys_match(ty, rt), "type error: expected {ty:?}, found {rt:?}");
+        nd
+    }
+
+    pub(super) fn finish_chain(self) -> (Exp<'tcx>, Option<Box<[ExpCond<'tcx>]>>) {
+        (self.e, self.curr_cond.map(|cc| cc.into_boxed_slice()))
+    }
+
     fn translate_full(&mut self, exp: &crate::parse::Exp, tys: impl Into<ExpectedTys<'tcx>>) -> Exp<'tcx> {
         let e = core::mem::take(&mut self.e);
         let (r, ty) = self.translate(exp, tys);
@@ -52,11 +86,9 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 assert_eq!(n, self.curr_nest);
                 assert_eq!(l, self.e.lines.last_key().unwrap());
             }
-            ExpOperand::Local(..) | ExpOperand::Const(..) => {
-                self.e.lines.push(ExpLine {
-                    ty,
-                    kind: ExpLineKind::Use(r),
-                });
+            _ => {
+                let line = self.mk_line(ExpLineKind::Use(r), ty);
+                self.e.lines.push(line);
             }
         }
         core::mem::replace(&mut self.e, e)
@@ -104,7 +136,7 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 return r;
             }
             ExpKind::Quantifier(kind, qvars, triggers, body) => {
-                self.curr_nest += 1;
+                let curr_cond = self.curr_cond.as_mut().map(|cc| core::mem::take(cc));
                 let (idns, tys): (Vec<_>, Vec<_>) = qvars.iter().map(|qv| {
                     let idn = self.tcx.tcx.interner.mk_symbol(&qv.idn.0);
                     let ty = self.tcx.tcx.translate_type(&qv.ty);
@@ -112,7 +144,7 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 }).unzip();
                 let tys = self.tcx.tcx.interner.mk_ty_list(tys);
                 for (i, (idn, ty)) in idns.iter().zip(tys.iter()).enumerate() {
-                    let op = ExpOperand::ExpLocal(self.curr_nest, ExpLocal::from(i));
+                    let op = ExpOperand::QuantLocal(self.curr_nest, QuantLocal::from(i));
                     let old = self.let_bound.insert(*idn, (op, *ty));
                     assert!(old.is_none(), "duplicate variable name bound in quantifier {idn:?}");
                 }
@@ -125,12 +157,9 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 for idn in idns.iter().rev() {
                     self.let_bound.swap_remove(idn);
                 }
+                self.curr_cond = curr_cond;
 
-                self.curr_nest -= 1;
-                ExpLine {
-                    ty: self.tcx.tcx.types.bool_,
-                    kind: ExpLineKind::Quantifier(*kind, tys, triggers, body),
-                }
+                self.mk_line(ExpLineKind::Quantifier(*kind, tys, triggers, body), self.tcx.tcx.types.bool_)
             }
             ExpKind::LetIn(decl, val, e) => {
                 let decl = self.tcx.tcx.interner.mk_symbol(&decl.0);
@@ -159,7 +188,7 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
 
                 let kind = ExpLineKind::Call(callee, args.collect());
                 let ty = sig.returns().1[0];
-                ExpLine { ty, kind }
+                self.mk_line(kind, ty)
             }
             ExpKind::Ident(ident) => {
                 let i = self.tcx.tcx.interner.mk_symbol(ident);
@@ -172,24 +201,22 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
             ExpKind::BinOp(op, lhs, rhs) => {
                 use crate::parse::BinOp::*;
                 match *op {
-                    Or | Implies => unreachable!(),
-                    And => {
-                        let false_ = Box::new(ExpKind::Const(ConstKind::Bool(false)));
-                        let tys = [self.tcx.tcx.types.bool_].into();
-                        self.mk_ternary(lhs, rhs, &false_, &tys)
-                    },
+                    Or | Implies | And => unreachable!(),
                     op => {
                         let (eq, lhs_tys, rhs_tys) = self.possible_bin_op(op);
                         let mut lhs = self.translate(lhs, lhs_tys);
                         let mut rhs = self.translate(rhs, rhs_tys);
                         if eq {
-                            (lhs, rhs) = self.equate_tys(lhs, rhs);
+                            self.equate_tys(&mut lhs, &mut rhs);
                         }
                         self.apply_bin_op(op, lhs, rhs)
                     }
                 }
             }
-            ExpKind::Ternary(c, t, e) => self.mk_ternary(c, t, e, &tys),
+            ExpKind::Ternary(c, t, e) => match self.mk_ternary(c, t, e, &tys) {
+                Ok(line) => line,
+                Err(operand) => return operand,
+            },
             ExpKind::Index(..) => todo!(),
             ExpKind::UnOp(op, e) => {
                 let tys = self.possible_un_op(*op);
@@ -201,15 +228,36 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         self.new_line(line)
     }
 
-    fn mk_ternary(&mut self, c: &crate::parse::Exp, t: &crate::parse::Exp, e: &crate::parse::Exp, tys: &ExpectedTys<'tcx>) -> ExpLine<'tcx> {
-        let c = self.translate(c, [self.tcx.tcx.types.bool_]);
-        let mut t = self.translate_nest(t, tys.clone());
-        let mut e = self.translate_nest(e, tys.clone());
-        self.equate_result_tys(&mut t, &mut e);
-        ExpLine {
-            ty: t.result_ty(),
-            kind: ExpLineKind::Ternary(c.0, t, e),
+    fn mk_line(&mut self, kind: ExpLineKind<'tcx>, ty: Ty<'tcx>) -> ExpLine<'tcx> {
+        let cond = self.get_condition(&kind);
+        ExpLine { ty, cond, kind }
+    }
+
+    fn mk_ternary(&mut self, c: &crate::parse::Exp, t: &crate::parse::Exp, e: &crate::parse::Exp, tys: &ExpectedTys<'tcx>) -> Result<ExpLine<'tcx>, Operand<'tcx>> {
+        let (cond, _) = self.translate(c, [self.tcx.tcx.types.bool_]);
+        if let Some(c) = cond.as_const() {
+            return Err(if c.as_bool().unwrap() {
+                self.translate(t, tys.clone())
+            } else {
+                self.translate(e, tys.clone())
+            });
         }
+        if let Some(cc) = &mut self.curr_cond {
+            cc.push(ExpCond { cond, neg: false });
+        }
+        let mut t = self.translate(t, tys.clone());
+        if let Some(cc) = &mut self.curr_cond {
+            let c = cc.last_mut().unwrap();
+            assert_eq!(c.cond, cond);
+            c.neg = true;
+        }
+        let mut e = self.translate(e, tys.clone());
+        if let Some(cc) = &mut self.curr_cond {
+            cc.pop();
+        }
+
+        self.equate_tys(&mut t, &mut e);
+        Ok(self.mk_line(ExpLineKind::Ternary([cond, t.0, e.0]), t.1))
     }
 
     fn mk_heap_update(&mut self, op: HeapUpdateOp, acc: &AccExp) -> ExpOperand<'tcx> {
@@ -219,20 +267,20 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         let ty = self.tcx.any_resource_id();
         let loc = self.translate(&acc.acc.loc, [ty]);
         let perm = self.translate(&acc.perm, [self.tcx.tcx.types.real_]);
-        let kind = ExpLineKind::HeapUpdate(op, heap, loc.0, perm.0);
-        let line = ExpLine { ty: self.tcx.tcx.types.heap_, kind };
+        let kind = ExpLineKind::HeapUpdate(op, [heap, loc.0, perm.0]);
+        let line = self.mk_line(kind, self.tcx.tcx.types.heap_);
         self.new_line(line).0
     }
 
     fn translate_nest(&mut self, exp: &crate::parse::Exp, tys: impl Into<ExpectedTys<'tcx>>) -> Exp<'tcx> {
-        let above = core::mem::take(&mut self.added_at_level);
         self.curr_nest += 1;
+        self.conditionless.push(TiVec::default());
         let e = self.translate_full(exp, tys);
+        self.conditionless.pop();
         self.curr_nest -= 1;
-        let added = core::mem::replace(&mut self.added_at_level, above);
-        for added in added {
-            let rm = self.evaluated.swap_remove(&added);
-            assert!(rm.is_some_and(|(lvl, ..)| lvl == self.curr_nest + 1));
+        for line in e.lines.iter() {
+            let rm = self.evaluated.swap_remove(line);
+            assert!(rm.is_some_and(|(.., lvl)| lvl == self.curr_nest + 1));
         }
         e
     }
@@ -267,7 +315,7 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
             Mod | IntDiv => types.int_,
             _ => todo!(),
         };
-        ExpLine { ty, kind: ExpLineKind::BinOp(op, lhs.0, rhs.0) }
+        self.mk_line(ExpLineKind::BinOp(op, [lhs.0, rhs.0]), ty)
     }
 
     fn possible_un_op(&self, op: UnOp) -> ExpectedTys<'tcx> {
@@ -290,79 +338,80 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
             Abs => todo!(),
             Deref => {
                 let heap = self.heap.expect("heap deref without heap");
-                let kind = ExpLineKind::Heap(HeapOp::Deref, heap, e.0);
+                let kind = ExpLineKind::Heap(HeapOp::Deref, [heap, e.0]);
                 let TyKind::ResourceId(ty) = *e.1.kind() else {
                     unreachable!();
                 };
-                return ExpLine { ty, kind }
+                return self.mk_line(kind, ty)
             }
             Perm => {
                 let heap = self.heap.expect("heap perm without heap");
-                let kind = ExpLineKind::Heap(HeapOp::Perm, heap, e.0);
-                return ExpLine { ty: self.tcx.tcx.types.real_, kind }
+                let kind = ExpLineKind::Heap(HeapOp::Perm, [heap, e.0]);
+                return self.mk_line(kind, self.tcx.tcx.types.real_);
             }
         };
-        ExpLine { ty, kind: ExpLineKind::UnOp(op, e.0) }
+        self.mk_line(ExpLineKind::UnOp(op, e.0), ty)
     }
 
-    fn equate_tys(&mut self, lhs: Operand<'tcx>, rhs: Operand<'tcx>) -> (Operand<'tcx>, Operand<'tcx>) {
+    fn equate_tys(&mut self, lhs: &mut Operand<'tcx>, rhs: &mut Operand<'tcx>) {
         // TODO: go from `int` type to `ref` type here if required
         assert_eq!(lhs.1, rhs.1);
-        (lhs, rhs)
-    }
-
-    fn equate_result_tys(&self, lhs: &mut Exp<'tcx>, rhs: &mut Exp<'tcx>) {
-        // TODO: go from `int` type to `ref` type here if required
-        assert_eq!(lhs.result_ty(), rhs.result_ty());
     }
 
     pub(super) fn new_line(&mut self, line: ExpLine<'tcx>) -> Operand<'tcx> {
         let ty = line.ty;
         let op = self.optimise_line(line).unwrap_or_else(|line| {
-            let (n, l, prev_ty) = self.evaluated.entry(line.kind).or_insert_with_key(|kind| {
-                self.added_at_level.push(kind.clone());
-                let l = self.e.lines.push_and_get_key(ExpLine { ty, kind: kind.clone() });
-                (self.curr_nest, l, ty)
+            let ty = line.ty;
+            // TODO: check for the same line evaluated with fewer conds
+            let (l, prev_ty, _) = self.evaluated.entry(line).or_insert_with_key(|line| {
+                self.conditionless[self.curr_nest as usize].push(line.cond.as_ref().is_some_and(|c| c.is_empty()));
+                let l = self.e.lines.push_and_get_key(line.clone());
+                (l, ty, self.curr_nest)
             });
             assert_eq!(*prev_ty, ty);
-            ExpOperand::ExpLocal(*n, *l)
+            ExpOperand::ExpLocal(self.curr_nest, *l)
         });
         (op, ty)
     }
 
-    pub(super) fn inline_exp(&mut self, mut exp: Exp<'tcx>) -> ExpOperand<'tcx> {
-        if let Some(o) = exp.as_operand() {
-            return o;
-        }
-        exp.walk_operands(&mut |op| self.inline_operand(op));
-        let op = exp.lines.last().unwrap().kind.as_use();
-        if op.is_some() {
-            exp.lines.pop();
-        }
-        for line in exp.lines.into_iter() {
-            let curr_line = self.e.lines.push_and_get_key(line.clone());
-            let old = self.evaluated.insert(line.kind.clone(), (self.curr_nest, curr_line, line.ty));
-            assert!(old.is_none(), "duplicate line");
-            self.added_at_level.push(line.kind);
-        }
-        op.unwrap_or_else(|| {
-            let k = self.e.lines.last_key().unwrap();
-            ExpOperand::ExpLocal(self.curr_nest, k)
-        })
+    pub(super) fn negate(&mut self, c: ExpOperand<'tcx>) -> ExpOperand<'tcx> {
+        let line = self.mk_line(ExpLineKind::UnOp(UnOp::Not, c), self.tcx.tcx.types.bool_);
+        self.new_line(line).0
     }
 
-    fn inline_operand(&self, operand: &mut ExpOperand<'tcx>) {
-        let ExpOperand::ExpLocal(n, l) = operand else {
-            return;
-        };
-        if *n <= self.curr_nest {
-            return;
-        }
-        *n -= 1;
-        if *n == self.curr_nest {
-            *l = ExpLocal::from(self.e.lines.len() + usize::from(*l))
-        }
-    }
+    // pub(super) fn inline_exp(&mut self, mut exp: Exp<'tcx>) -> ExpOperand<'tcx> {
+    //     if let Some(o) = exp.as_operand() {
+    //         return o;
+    //     }
+    //     exp.walk_operands(&mut |op| self.inline_operand(op));
+    //     let op = exp.lines.last().unwrap().kind.as_use();
+    //     if op.is_some() {
+    //         exp.lines.pop();
+    //     }
+    //     for line in exp.lines.into_iter() {
+    //         let curr_line = self.e.lines.push_and_get_key(line.clone());
+    //         let old = self.evaluated.insert(line.kind.clone(), (self.curr_nest, curr_line, line.ty));
+    //         assert!(old.is_none(), "duplicate line");
+    //         self.added_at_level.push(line.kind);
+    //     }
+    //     op.unwrap_or_else(|| {
+    //         let k = self.e.lines.last_key().unwrap();
+    //         ExpOperand::ExpLocal(self.curr_nest, k)
+    //     })
+    // }
+
+    // fn inline_operand(&self, operand: &mut ExpOperand<'tcx>) {
+    //     let ExpOperand::ExpLocal(n, l) = operand else {
+    //         return;
+    //     };
+    //     if *n <= self.curr_nest {
+    //         return;
+    //     }
+    //     *n -= 1;
+    //     if *n == self.curr_nest {
+    //         *l = ExpLocal::from(self.e.lines.len() + usize::from(*l))
+    //     }
+    // }
 }
 
 #[derive(Debug, Default, Clone)]

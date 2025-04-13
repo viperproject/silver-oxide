@@ -1,6 +1,8 @@
 use core::ops::*;
 
 use crate::parse::{BinOp, ConstKind, UnOp};
+use crate::program::exp::ExpCond;
+use crate::program::MemberKind;
 use crate::program::{exp::{ExpLine, ExpLineKind, ExpOperand}, Const};
 
 use super::exp::ExpTranslator;
@@ -10,12 +12,8 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         use ExpLineKind::*;
         match &mut line.kind {
             Use(op) => Ok(*op),
-            Ternary(ExpOperand::Const(c), t, e) => if c.as_bool().unwrap() {
-                Ok(self.inline_exp(core::mem::take(t)))
-            } else {
-                Ok(self.inline_exp(core::mem::take(e)))
-            }
-            Ternary(c, t, e) => match (t.as_const().and_then(Const::as_bool), e.as_const().and_then(Const::as_bool)) {
+            Ternary([ExpOperand::Const(_), ..]) => unreachable!(),
+            Ternary([c, t, e]) => match (t.as_const().and_then(Const::as_bool), e.as_const().and_then(Const::as_bool)) {
                 (Some(b@true), Some(true)) | (Some(b@false), Some(false)) =>
                     Ok(ExpOperand::Const(self.tcx.tcx.interner.mk_const(ConstKind::bool(b)))),
                 (Some(true), Some(false)) => Ok(*c),
@@ -24,7 +22,7 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
             }
             UnOp(op, ExpOperand::Const(c)) =>
                 self.optimise_unop(*op, *c).map(ExpOperand::Const).ok_or(line),
-            BinOp(op, ExpOperand::Const(lhs), ExpOperand::Const(rhs)) =>
+            BinOp(op, [ExpOperand::Const(lhs), ExpOperand::Const(rhs)]) =>
                 self.optimise_binop(*op, *lhs, *rhs).map(ExpOperand::Const).ok_or(line),
             // TODO?
             // BinOp(op, ExpOperand::Const(lhs), rhs) if lhs.as_bool().is_some() => {
@@ -120,7 +118,21 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         }
     }
 
-    fn negate(&mut self, c: ExpOperand<'tcx>) -> ExpOperand<'tcx> {
-        self.new_line(ExpLine { ty: self.tcx.tcx.types.bool_, kind: ExpLineKind::UnOp(UnOp::Not, c) }).0
+    pub(super) fn get_condition(&self, kind: &ExpLineKind) -> Option<Box<[ExpCond<'tcx>]>> {
+        let cless = match kind {
+            ExpLineKind::Use(..) | ExpLineKind::UnOp(..) | ExpLineKind::Ternary(..) => true,
+            ExpLineKind::BinOp(op, ..) => !matches!(op, BinOp::Div | BinOp::IntDiv | BinOp::Mod),
+            ExpLineKind::Call(did, _) =>
+                matches!(self.tcx.tcx.data(*did).kind, MemberKind::DomainFunction | MemberKind::Predicate | MemberKind::Field),
+            _ => false,
+        };
+        let cless = cless && kind.operands().iter().all(|o|
+            o.as_exp_local().is_none_or(|(lvl, eo)| self.conditionless[lvl as usize][eo])
+        );
+        if cless {
+            Some(Default::default())
+        } else {
+            self.curr_cond.as_ref().map(|cc| cc.iter().copied().collect())
+        }
     }
 }

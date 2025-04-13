@@ -2,18 +2,26 @@ use core::fmt;
 
 use crate::TiVec;
 
-use super::{exp::Exp, idx::*, newline};
+use super::{exp::{Exp, ExpCond, ExpOperand}, idx::*, newline};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ResourceExp<'tcx> {
     pub resources: TiVec<CompoundIdx, Resource<'tcx>>,
     pub pure: Exp<'tcx>,
 }
 
+impl<'tcx> ResourceExp<'tcx> {
+    pub fn pure(pure: Exp<'tcx>) -> Self {
+        Self { pure, ..Default::default() }
+    }
+}
+
+#[derive(Clone)]
 pub struct Resource<'tcx> {
-    pub cond: Vec<Exp<'tcx>>,
-    pub loc: Exp<'tcx>,
-    pub perm: Exp<'tcx>,
+    pub exp: Exp<'tcx>,
+    pub cond: Option<Box<[ExpCond<'tcx>]>>,
+    pub loc: ExpOperand<'tcx>,
+    pub perm: ExpOperand<'tcx>,
 }
 
 // fmt
@@ -22,6 +30,7 @@ impl fmt::Debug for ResourceExp<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (_, line) in self.resources.iter_enumerated() {
             line.fmt(f)?;
+            writeln!(f)?;
             newline(f)?;
         }
         let indent = f.width().unwrap_or_default() + 1;
@@ -32,12 +41,19 @@ impl fmt::Debug for ResourceExp<'_> {
 impl fmt::Debug for Resource<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let indent = f.width().unwrap_or_default() + 1;
-        for cond in self.cond.iter() {
-            write!(f, "? {cond:indent$?}")?;
-            newline(f)?;
-        }
-        write!(f, "> {:indent$?}", self.loc)?;
+        write!(f, "> {:indent$?}", self.exp)?;
         newline(f)?;
-        writeln!(f, "+ {:indent$?}", self.perm)
+        match self.cond.as_deref() {
+            None => {
+                write!(f, "? false")?;
+                newline(f)?;
+            }
+            Some([]) => (),
+            Some(cond) => {
+                write!(f, "? {cond:?}")?;
+                newline(f)?;
+            }
+        }
+        write!(f, "+ acc({:?}, {:?})", self.loc, self.perm)
     }
 }

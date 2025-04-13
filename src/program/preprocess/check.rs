@@ -26,16 +26,13 @@ impl<'a> AstWalker<'a> for CallResolver<'_, '_> {
 
     fn walk_statement(&mut self, ast: &'a Statement) {
         match ast {
-            Statement::Assign(tgts, e) => match &**e {
-                e@ExpKind::FuncApp(ident, args) => {
+            Statement::Assign(tgts, e) => match e {
+                AssignRhs::Call(ident, args) => {
                     self.resolve(ident, |data| {
                         matches!(data.kind, MemberKind::DomainFunction | MemberKind::Function | MemberKind::Method) &&
                             data.sig.unwrap().args.is_none_or(|params| params == args.len()) &&
                             data.sig.unwrap().rets == tgts.len()
                     });
-                    tgts.walk_children(self);
-                    e.walk_children(self);
-                    return;
                 }
                 _ => assert_eq!(tgts.len(), 1),
             }
@@ -73,13 +70,22 @@ impl<'a> AstWalker<'a> for CallResolver<'_, '_> {
         }
         ast.walk_children(self);
     }
+
+    fn walk_star_or_names(&mut self, ast: &'a StarOrNames) {
+        if let StarOrNames::Names(names) = ast {
+            for name in names {
+                self.resolve(name, |data| matches!(data.kind, MemberKind::Field));
+            }
+        }
+        ast.walk_children(self);
+    }
 }
 
 impl<'tcx> CallResolver<'_, 'tcx> {
     fn resolve(&mut self, ident: &Ident, p: impl FnOnce(MemberData) -> bool) {
         let i = self.tcx.interner.mk_symbol(ident);
         let i = self.tcx.global_ref(i);
-        if !i.is_some_and(|id| p(self.tcx.data(id))) {
+        if i.is_none_or(|id| !p(self.tcx.data(id))) {
             panic!("unresolved `{:?}`: {:#?}", ident, i.map(|id| self.tcx.data(id)));
             self.errors.push(ResolveError { unresolved: ident.clone() });
         }

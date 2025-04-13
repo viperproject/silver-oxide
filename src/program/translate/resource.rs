@@ -1,40 +1,40 @@
-use crate::{parse::{ConstHeapKind, ConstKind, HeapExp}, program::{exp::{Exp, ExpOperand}, resource::{Resource, ResourceExp}, Local, Ty}};
+use crate::{parse::{ConstHeapKind, ConstKind, HeapExp}, program::{exp::{Exp, ExpLineKind, ExpOperand}, resource::{Resource, ResourceExp}, DefId, ExpLocal}};
 
 use super::TranslationCtxt;
 
 impl<'tcx> TranslationCtxt<'_, 'tcx> {
-    pub(crate) fn translate_resource(&mut self, h: &HeapExp, heap: Option<Local>) -> ResourceExp<'tcx> {
-        let heap = heap.map(ExpOperand::Local).unwrap_or_else(|| {
+    pub(crate) fn translate_resource(&mut self, h: &HeapExp, heap: Option<ExpOperand<'tcx>>) -> ResourceExp<'tcx> {
+        let heap = heap.unwrap_or_else(|| {
             ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::Heap(ConstHeapKind::SelfFraming)))
         });
         let mut r = ResourceExp::default();
         r.resources = h.res.iter().map(|r| {
-            let mut false_cond = None;
-            let mut cond = r.cond.iter().filter_map(|c| {
-                if false_cond.is_some() {
-                    return None;
-                }
-                let e = self.translate_exp_framed(c, self.tcx.types.bool_, heap);
-                if let Some(c) = e.as_const() {
-                    false_cond = (!c.as_bool().unwrap()).then_some(e);
-                    return None;
-                }
-                Some(e)
-            }).collect();
-            if let Some(e) = false_cond {
-                cond = vec![e];
+            let mut et = self.prepare_translator(Some(heap));
+            for (neg, cond) in &r.cond {
+                et.translate_cond(*neg, cond);
             }
             let ty = self.any_resource_id();
-            let loc = self.translate_exp_framed(&r.acc.acc.loc, ty, heap);
-            let perm = self.translate_exp_framed(&r.acc.perm, self.tcx.types.real_, heap);
-            Resource { cond, loc, perm }
+            let loc = et.translate_chain(&r.acc.acc.loc, ty);
+            let perm = et.translate_chain(&r.acc.perm, self.tcx.types.real_);
+            let (exp, cond) = et.finish_chain();
+            Resource { exp, cond, loc, perm }
         }).collect();
 
-        r.pure = self.translate_exp_framed(&h.exp, self.tcx.types.bool_, heap);
+        r.pure = self.translate_exp_inner(&h.exp, self.tcx.types.bool_, Some(heap));
         r
     }
 
-    fn translate_exp_framed(&mut self, exp: &crate::parse::Exp, ty: Ty<'tcx>, heap: ExpOperand<'tcx>) -> Exp<'tcx> {
-        self.translate_exp_inner(exp, ty, Some(heap))
+    /// Translate the resource represented by a `new(...)`
+    pub(crate) fn translate_resource_for_new(&self, tmp: ExpOperand<'tcx>, fields: Vec<DefId>) -> ResourceExp<'tcx> {
+        let mut r = ResourceExp::default();
+        r.resources = fields.into_iter().map(|f| {
+            let ty = self.tcx.fn_sig(f).unwrap().returns().1;
+            assert_eq!(ty.len(), 1);
+            let exp = Exp::new_simple(ty[0], ExpLineKind::Call(f, vec![tmp]));
+            let perm = ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::write()));
+            Resource { exp, cond: Some(Default::default()), loc: ExpOperand::ExpLocal(0, ExpLocal::ZERO), perm }
+        }).collect();
+        r.pure = Exp::new_use(ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::Bool(true))), self.tcx.types.bool_);
+        r
     }
 }
