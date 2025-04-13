@@ -6,18 +6,13 @@ use super::TranslationCtxt;
 
 impl<'tcx> TranslationCtxt<'_, 'tcx> {
     pub(crate) fn translate_exp(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>, have_heap: bool) -> Exp<'tcx> {
-        self.translate_exp_inner(exp, ty, have_heap.then(|| true))
+        let heap = have_heap.then(|| {
+            ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::Heap(ConstHeapKind::Old)))
+        });
+        self.translate_exp_inner(exp, ty, heap)
     }
 
-    pub(super) fn translate_exp_inner(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>, use_old_heap: Option<bool>) -> Exp<'tcx> {
-        let heap = use_old_heap.map(|old| {
-            let kind = if old {
-                ConstHeapKind::Old
-            } else {
-                ConstHeapKind::SelfFraming
-            };
-            ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::Heap(kind)))
-        });
+    pub(super) fn translate_exp_inner(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>, heap: Option<ExpOperand<'tcx>>) -> Exp<'tcx> {
         let mut et = ExpTranslator {
             tcx: self,
             e: Default::default(),

@@ -6,3 +6,4 @@ mod optimise;
 mod cfg;
 
 pub(crate) use ctx::*;
+pub use cfg::*;

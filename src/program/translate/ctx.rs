@@ -51,6 +51,7 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
     }
 
     pub(super) fn add_body(&mut self, body: &StmtBlock) {
+        self.params.insert(ArgRef::Heap(None), self.locals.push_and_get_key(self.tcx.types.heap_));
         self.walk_block(body);
         for label in self.used_labels.drain(..) {
             assert!(self.defined_labels.contains(&label), "label `{label}` not defined");

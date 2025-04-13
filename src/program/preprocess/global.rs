@@ -134,7 +134,7 @@ impl<'tcx> FnSig<'tcx> {
 
     fn trim_params<'a>((mut param_ref, mut params): (&'a [ArgRef<'tcx>], &'tcx [Ty<'tcx>])) -> (&'a [ArgRef<'tcx>], &'tcx [Ty<'tcx>]) {
         assert_eq!(param_ref.len(), params.len());
-        while let Some((ArgRef::HeapArg | ArgRef::HeapRet, pr)) = param_ref.split_last() {
+        while let Some((ArgRef::Heap(..), pr)) = param_ref.split_last() {
             param_ref = pr;
             params = &params[..params.len() - 1];
         }
@@ -146,8 +146,7 @@ impl<'tcx> FnSig<'tcx> {
 pub enum ArgRef<'tcx> {
     Ident(Symbol<'tcx>),
     Label(Symbol<'tcx>),
-    HeapArg,
-    HeapRet,
+    Heap(Option<bool>),
     Result,
     Unnamed,
 }
@@ -207,7 +206,7 @@ impl<'tcx> TyCtxt<'tcx> {
                 (None, Ok(mk_resource_id(ret)))
             }
             Method(m) => {
-                let ret_ref: Vec<_> = sig.ret.iter().map(arg_ref).chain([ArgRef::HeapRet]).collect();
+                let ret_ref: Vec<_> = sig.ret.iter().map(arg_ref).chain([ArgRef::Heap(Some(true))]).collect();
                 let ret = sig.ret.iter().map(&intern_arg).chain([mk_compound(Some(true))]).collect();
                 let returns = self.interner.mk_ty_list(ret);
                 let data = self.calculate_method_data(id, m, ret_ref, returns);
@@ -221,7 +220,7 @@ impl<'tcx> TyCtxt<'tcx> {
         let ret_ok = ret.as_ref().ok().copied();
 
         let arg_ref = sig.args.iter().map(arg_ref);
-        let arg_ref = arg_ref.chain(heap_arg.map(|_| ArgRef::HeapArg));
+        let arg_ref = arg_ref.chain(heap_arg.map(|_| ArgRef::Heap(Some(false))));
         let arg_ref: Vec<_> = arg_ref.chain(ret_ok.map(|_| ArgRef::Result)).collect();
 
         let args = sig.args.iter().map(&intern_arg).chain(heap_arg).chain(ret_ok).collect();

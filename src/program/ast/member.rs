@@ -48,7 +48,7 @@ impl<'tcx> TyCtxt<'tcx> {
             Field(..) => Member::Field,
             Function(f) => {
                 let have_heap = !f.contract.precondition.is_pure();
-                let pre = tcx.translate_resource(&f.contract.precondition);
+                let pre = tcx.translate_resource(&f.contract.precondition, None);
                 eprintln!("[Translate] fn pre {:?}\n{pre:?}", f.signature.name.0.0);
                 tcx.add_return();
                 let post = tcx.translate_exp(&f.contract.postcondition.exp, self.types.bool_, have_heap);
@@ -62,17 +62,17 @@ impl<'tcx> TyCtxt<'tcx> {
                 Member::Function(pre, post, body)
             }
             Predicate(p) => {
-                let body = p.body.as_ref().map(|b| tcx.translate_resource(&b.0));
+                let body = p.body.as_ref().map(|b| tcx.translate_resource(&b.0, None));
                 if let Some(body) = &body {
                     eprintln!("[Translate] predicate {:?}\n{body:?}", p.signature.name.0.0);
                 }
                 Member::Predicate(body)
             }
             Method(m) => {
-                let pre = tcx.translate_resource(&m.contract.precondition);
+                let pre = tcx.translate_resource(&m.contract.precondition, None);
                 eprintln!("[Translate] method pre {:?}\n{pre:?}", m.signature.name.0.0);
                 tcx.add_return();
-                let post = tcx.translate_resource(&m.contract.postcondition);
+                let post = tcx.translate_resource(&m.contract.postcondition, None);
                 eprintln!("[Translate] method post {:?}\n{post:?}", m.signature.name.0.0);
                 let body = m.body.as_ref().map(|b| tcx.translate_body(b));
                 Member::Method(pre, post, body)

@@ -42,6 +42,7 @@ idx!(ExpLocal, "e{}");
 
 idx!(BasicBlock, "bb{}");
 idx!(Label, "lbl{}");
+idx!(Loop, "∞{}");
 
 idx!(LocalDefId, "id{}");
 
