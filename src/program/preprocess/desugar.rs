@@ -103,7 +103,7 @@ impl<'a> AstWalkerMut<'a> for Desugar<'_, '_> {
 
     fn walk_mut_assign_rhs(&mut self, ast: &'a mut AssignRhs) {
         if let AssignRhs::Call(ident, ..) = ast {
-            let callee = self.tcx.get_callee(ident);
+            let callee = self.tcx.resolve_global_ref(ident);
             if !self.tcx.is_method(callee) {
                 let call = core::mem::replace(ast, AssignRhs::New(StarOrNames::Star));
                 let AssignRhs::Call(ident, args) = call else {
@@ -166,7 +166,7 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
                 }
             }
             ExpKind::FuncApp(ident, _) => {
-                let callee = self.tcx.get_callee(ident);
+                let callee = self.tcx.resolve_global_ref(ident);
                 if self.tcx.is_predicate(callee) {
                     let loc = Self::take(ast);
                     let loc = AccExp {

@@ -2,7 +2,7 @@ use core::{fmt, hash};
 
 use crate::{parse::{BinOp, HeapUpdateOp, QuantifierKind, UnOp}, program::{Const, DefId, Ty, TyList}, TiVec};
 
-use super::{body::Operand, idx::*, newline};
+use super::{body::{Operand, OperandKind}, idx::*, newline};
 
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct Exp<'tcx> {
@@ -38,7 +38,13 @@ pub enum ExpLineKind<'tcx> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ExpOperand<'tcx> {
+pub struct ExpOperand<'tcx> {
+    pub ty: Ty<'tcx>,
+    pub kind: ExpOperandKind<'tcx>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExpOperandKind<'tcx> {
     Const(Const<'tcx>),
     ExpLocal(u16, ExpLocal),
     /// A function/method argument/result or a local variable
@@ -54,7 +60,8 @@ pub enum HeapOp {
 }
 
 impl<'tcx> Exp<'tcx> {
-    pub fn new_use(op: ExpOperand<'tcx>, ty: Ty<'tcx>) -> Self {
+    pub fn new_use(op: ExpOperandKind<'tcx>, ty: Ty<'tcx>) -> Self {
+        let op = ExpOperand { ty, kind: op };
         Self::new_simple(ty, ExpLineKind::Use(op))
     }
 
@@ -63,6 +70,11 @@ impl<'tcx> Exp<'tcx> {
         let line = ExpLine { ty, cond: Some(Default::default()), kind };
         self_.lines.push(line);
         self_
+    }
+
+    pub fn result(&self) -> ExpOperand<'tcx> {
+        let (l, line) = self.lines.last_key_value().unwrap();
+        ExpOperand { ty: line.ty, kind: ExpOperandKind::ExpLocal(0, l) }
     }
 
     pub fn result_ty(&self) -> Ty<'tcx> {
@@ -74,15 +86,22 @@ impl<'tcx> Exp<'tcx> {
             return None;
         }
         let use_ = self.lines[ExpLocal::ZERO].kind.as_use()?;
-        match use_ {
-            ExpOperand::Const(c) => Some(Operand::Const(c)),
-            ExpOperand::Local(l) => Some(Operand::Local(l)),
+        let kind = match use_.kind {
+            ExpOperandKind::Const(c) => OperandKind::Const(c),
+            ExpOperandKind::Local(l) => OperandKind::Local(l),
             _ => unreachable!(),
-        }
+        };
+        Some(Operand { ty: use_.ty, kind })
     }
 
     pub fn as_const(&self) -> Option<Const<'tcx>> {
         self.as_operand().and_then(Operand::as_const)
+    }
+
+    pub fn walk<'a>(&'a self) -> ExpLineWalker<'a, 'tcx> {
+        let mut walker = ExpLineWalker::default();
+        walker.add_exp(self);
+        walker
     }
 }
 
@@ -117,26 +136,65 @@ impl<'tcx> ExpLineKind<'tcx> {
 
 impl<'tcx> ExpOperand<'tcx> {
     pub fn as_const(self) -> Option<Const<'tcx>> {
-        match self {
-            ExpOperand::Const(c) => Some(c),
+        match self.kind {
+            ExpOperandKind::Const(c) => Some(c),
             _ => None,
         }
     }
 
     pub fn as_exp_local(self) -> Option<(u16, ExpLocal)> {
-        match self {
-            ExpOperand::ExpLocal(n, el) => Some((n, el)),
+        match self.kind {
+            ExpOperandKind::ExpLocal(n, el) => Some((n, el)),
             _ => None,
         }
     }
 }
 
+#[derive(Default)]
+pub struct ExpLineWalker<'a, 'tcx> {
+    stack: Vec<core::slice::Iter<'a, ExpLine<'tcx>>>,
+}
+
+impl<'a, 'tcx> Iterator for ExpLineWalker<'a, 'tcx> {
+    type Item = &'a ExpLine<'tcx>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = loop {
+            let line = self.stack.last_mut()?;
+            let Some(next) = line.next() else {
+                self.stack.pop();
+                continue;
+            };
+            break next;
+        };
+
+        match &next.kind {
+            ExpLineKind::Quantifier(_, _, triggers, exp) => {
+                for trigger in triggers {
+                    for subtrigger in trigger {
+                        self.add_exp(subtrigger);
+                    }
+                }
+                self.add_exp(exp);
+            }
+            _ => (),
+        }
+        Some(next)
+    }
+}
+
+impl<'a, 'tcx> ExpLineWalker<'a, 'tcx> {
+    pub(super) fn add_exp(&mut self, exp: &'a Exp<'tcx>) {
+        self.stack.push(exp.lines.iter());
+    }
+}
+
 impl<'tcx> From<Operand<'tcx>> for ExpOperand<'tcx> {
     fn from(op: Operand<'tcx>) -> Self {
-        match op {
-            Operand::Const(c) => ExpOperand::Const(c),
-            Operand::Local(l) => ExpOperand::Local(l),
-        }
+        let kind = match op.kind {
+            OperandKind::Const(c) => ExpOperandKind::Const(c),
+            OperandKind::Local(l) => ExpOperandKind::Local(l),
+        };
+        ExpOperand { ty: op.ty, kind }
     }
 }
 
@@ -165,7 +223,8 @@ impl fmt::Debug for Exp<'_> {
                 newline(f)?;
             }
             if l != self.lines.last_key().unwrap() {
-                ExpOperand::ExpLocal(indent as u16, l).fmt(f)?;
+                let kind = ExpOperandKind::ExpLocal(indent as u16, l);
+                ExpOperand { ty: line.ty, kind }.fmt(f)?;
                 write!(f, ": ")?;
                 line.ty.fmt(f)?;
                 write!(f, " := ")?;
@@ -240,7 +299,8 @@ impl fmt::Debug for ExpLineKind<'_> {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    let operand = ExpOperand::QuantLocal((si - 1) as u16, QuantLocal::from(i));
+                    let kind = ExpOperandKind::QuantLocal((si - 1) as u16, QuantLocal::from(i));
+                    let operand = ExpOperand { ty: *ty, kind };
                     write!(f, "{operand:?}: {ty:?}")?;
                 }
                 write!(f, ".")?;
@@ -270,23 +330,23 @@ impl fmt::Debug for ExpLineKind<'_> {
 
 impl fmt::Debug for ExpOperand<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            ExpOperand::Const(c) => c.fmt(f),
-            ExpOperand::ExpLocal(n, el) => {
+        match self.kind {
+            ExpOperandKind::Const(c) => c.fmt(f),
+            ExpOperandKind::ExpLocal(n, el) => {
                 el.fmt(f)?;
                 if n != 0 {
                     write!(f, "↑{n}")?;
                 }
                 Ok(())
             }
-            ExpOperand::QuantLocal(n, ql) => {
+            ExpOperandKind::QuantLocal(n, ql) => {
                 ql.fmt(f)?;
                 if n != 0 {
                     write!(f, "↑{n}")?;
                 }
                 Ok(())
             }
-            ExpOperand::Local(l) => l.fmt(f),
+            ExpOperandKind::Local(l) => l.fmt(f),
         }
     }
 }

@@ -451,7 +451,7 @@ walk_enum!(
 );
 walk_struct!(LocAccess, walk_loc_access, walk_mut_loc_access, loc);
 walk_struct!(Field, walk_field, walk_mut_field, 0);
-walk_struct!(Domain, walk_domain, walk_mut_domain, name, interpretation);
+walk_struct!(Domain, walk_domain, walk_mut_domain, name, params, interpretation);
 walk_struct!(
     Function,
     walk_function,

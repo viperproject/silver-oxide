@@ -344,7 +344,7 @@ peg::parser! {
             interp:domain_interpretation()? _
             "{" _ elements:(annotated(<domain_element()>) ** _) _ "}"
         {
-            [Declaration::Domain(Domain { name: name.clone(), interpretation: interp.unwrap_or_default() })].into_iter().chain(
+            [Declaration::Domain(Domain { name: name.clone(), params: params.unwrap_or_default(), interpretation: interp.unwrap_or_default() })].into_iter().chain(
                 elements.into_iter().map(|kind| Declaration::DomainElement(DomainElement { domain: name.0.clone(), kind }))
             ).collect()
         }

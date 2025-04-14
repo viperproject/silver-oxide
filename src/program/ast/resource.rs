@@ -1,11 +1,12 @@
 use core::fmt;
 
-use crate::TiVec;
+use crate::{program::{Ty, TyWalker}, TiVec};
 
-use super::{exp::{Exp, ExpCond, ExpOperand}, idx::*, newline};
+use super::{exp::{Exp, ExpCond, ExpLine, ExpLineWalker, ExpOperand}, idx::*, newline};
 
 #[derive(Default, Clone)]
 pub struct ResourceExp<'tcx> {
+    pub locals: TiVec<Local, Ty<'tcx>>,
     pub resources: TiVec<CompoundIdx, Resource<'tcx>>,
     pub pure: Exp<'tcx>,
 }
@@ -13,6 +14,23 @@ pub struct ResourceExp<'tcx> {
 impl<'tcx> ResourceExp<'tcx> {
     pub fn pure(pure: Exp<'tcx>) -> Self {
         Self { pure, ..Default::default() }
+    }
+
+    pub fn walk<'a>(&'a self) -> ExpLineWalker<'a, 'tcx> {
+        let mut walker = ExpLineWalker::default();
+        for resource in &self.resources {
+            walker.add_exp(&resource.exp);
+        }
+        walker.add_exp(&self.pure);
+        walker
+    }
+
+    pub fn walk_locals(&self) -> TyWalker<'tcx> {
+        let mut walker = TyWalker::default();
+        for &ty in self.locals.iter().rev() {
+            walker.add_ty(ty);
+        }
+        walker
     }
 }
 

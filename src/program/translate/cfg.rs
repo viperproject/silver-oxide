@@ -2,8 +2,10 @@ use core::{fmt, ops::Deref};
 use std::ops::Index;
 // use petgraph::algo::dominators;
 
+use petgraph::visit::{DfsPostOrder, Walker};
+
 use crate::parse::{ExpKind, Ident, Invariant};
-use crate::program::Loop;
+use crate::program::{CanDot, Loop};
 use crate::{HashMap, HashSet};
 
 use crate::{parse::{Statement, StmtBlock}, program::{BasicBlock, Symbol, TyCtxt}, TiVec};
@@ -16,10 +18,10 @@ pub struct Cfg<'a, 'tcx> {
     // pub scc: Vec<Vec<BasicBlock>>,
 }
 
-#[derive(Default)]
 pub struct CfgData<'a, 'tcx> {
+    pub(crate) name: Symbol<'tcx>,
+    pub(crate) blocks: TiVec<BasicBlock, BasicBlockData<'a>>,
     labels: HashMap<Symbol<'tcx>, BasicBlock>,
-    blocks: TiVec<BasicBlock, BasicBlockData<'a>>,
 }
 
 pub struct LoopData<'tcx> {
@@ -99,7 +101,7 @@ impl<'a> BasicBlockData<'a> {
         self.member_of_loop().filter(|lh| &[lh.bb()] == self.edges())
     }
 
-    fn member_of_loop_non_framing(&self) -> Option<LoopHead> {
+    pub(crate) fn member_of_loop_non_framing(&self) -> Option<LoopHead> {
         self.loop_member.as_ref().map_or_else(
             |lm| lm.in_loop,
             |lh| lh.nested
@@ -112,8 +114,8 @@ impl<'a> BasicBlockData<'a> {
 }
 
 impl<'a, 'tcx> Cfg<'a, 'tcx> {
-    pub fn new(tcx: &TyCtxt<'tcx>, labels: impl Iterator<Item = Symbol<'tcx>>, body: &'a StmtBlock) -> Self {
-        let mut data = CfgData::new(tcx, labels, body);
+    pub fn new(tcx: &TyCtxt<'tcx>, name: Symbol<'tcx>, labels: impl Iterator<Item = Symbol<'tcx>>, body: &'a StmtBlock) -> Self {
+        let mut data = CfgData::new(tcx, name, labels, body);
         let start = data.start();
         
         // TODO: is this useful?
@@ -166,6 +168,7 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             }
         }
 
+        data.dump_dot(false);
         Self {
             data,
             postorder,
@@ -176,7 +179,7 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
     }
 
     pub fn preorder(&self) -> impl Iterator<Item = (BasicBlock, &'_ BasicBlockData<'a>)> + '_ {
-        self.postorder.iter().rev().map(|&bb| (bb, &self.data.blocks[bb]))
+        self.postorder.iter().rev().map(|&bb| (bb, &self.data[bb]))
     }
 
     pub fn loop_head(&self, loop_: Loop) -> LoopHead {
@@ -194,11 +197,11 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
 
         for &from_bb in postorder {
             data.set_dead_branch(from_bb);
-            let from = &data.blocks[from_bb];
+            let from = &data[from_bb];
             let (preorder, kind) = (from.preorder, from.kind);
             let mut loop_member = HashSet::new();
             for &to_bb in kind.edges() {
-                let to = &data.blocks[to_bb];
+                let to = &data[to_bb];
                 let to_loop_member = &loop_members[to_bb];
                 if to.preorder <= preorder {
                     // The only edge out of this node is this back edge
@@ -239,7 +242,7 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
                 })
             ).map(|(_, l)| l);
             if !loop_exit.is_empty() {
-                assert_eq!(data.blocks[to].predecessors.len(), 1);
+                assert_eq!(data[to].predecessors.len(), 1);
             }
 
             let to_bb = &mut data.blocks[to];
@@ -260,24 +263,24 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             }
             if let Some(lh) = to_bb.member_of_loop() {
                 let loop_ = data.get_loop(lh);
-                let modifies = data.blocks[to].modifies();
+                let modifies = data[to].modifies();
                 loop_data[loop_].modifies.extend(modifies.map(|m| tcx.interner.mk_symbol(m)));
             }
         }
         for (loop_, other) in errors {
-            data.dump_dot("problem-cfg.dot");
+            let path = data.dump_dot(true).unwrap();
             let lh_kind = data[loop_.bb()].kind;
             match (lh_kind.loop_head().0, data[other].kind.loop_head().0) {
                 (None, None) => unreachable!(),
                 (Some(label), None) | (None, Some(label)) =>
-                    panic!("while loop has a forbidden second entry at label {label}"),
+                    panic!("while loop has a forbidden second entry at label {label}, see {path:?}"),
                 (Some(l1), Some(l2)) =>
-                    panic!("label {l1} and {l2} are both entry points into the same loop, which is not allowed"),
+                    panic!("label {l1} and {l2} are both entry points into the same loop, which is not allowed, see {path:?}"),
             }
         }
         for l in loop_data.keys().rev() {
             let ld = &loop_data[l];
-            let bb = &data.blocks[ld.head.bb()];
+            let bb = &data[ld.head.bb()];
             let lhd = bb.loop_member.as_ref().ok().unwrap();
             let Some(nested) = lhd.nested else {
                 continue;
@@ -295,8 +298,8 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
     }
 
     fn select_innermost_loop(data: &CfgData, to: BasicBlock, errors: &mut Vec<(LoopHead, BasicBlock)>) -> Option<LoopHead> {
-        let preds = data.blocks[to].preorder_preds(data);
-        let mut preds = preds.map(|pred| data.blocks[pred].member_of_loop());
+        let preds = data[to].preorder_preds(data);
+        let mut preds = preds.map(|pred| data[pred].member_of_loop());
 
         let mut in_loop = preds.next()?;
         let mut error = false;
@@ -327,15 +330,19 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> CfgData<'a, 'tcx> {
-    pub fn new(tcx: &TyCtxt<'tcx>, labels: impl Iterator<Item = Symbol<'tcx>>, body: &'a StmtBlock) -> Self {
-        let mut self_ = Self::default();
+    pub fn new(tcx: &TyCtxt<'tcx>, name: Symbol<'tcx>, labels: impl Iterator<Item = Symbol<'tcx>>, body: &'a StmtBlock) -> Self {
+        let mut self_ = CfgData {
+            name,
+            labels: Default::default(),
+            blocks: Default::default(),
+        };
         self_.init(tcx, labels, body);
         self_
     }
 
     pub fn pcs(&self, bb: BasicBlock) -> Option<impl Iterator<Item = (&[Branch], Branch)> + '_> {
-        self.blocks[bb].pcs.pcs().unwrap_or_else(|bb| {
-            self.blocks[bb].pcs.pcs().unwrap()
+        self[bb].pcs.pcs().unwrap_or_else(|bb| {
+            self[bb].pcs.pcs().unwrap()
         })
     }
 
@@ -344,14 +351,14 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
     }
 
     pub fn get_loop(&self, lh: LoopHead) -> Loop {
-        self.blocks[lh.bb()].loop_member.as_ref().ok().unwrap().loop_
+        self[lh.bb()].loop_member.as_ref().ok().unwrap().loop_
     }
 
     pub fn member_of_loops(&self, bb: BasicBlock) -> impl Iterator<Item = (Loop, LoopHead)> + '_ {
-        let mut loop_head = self.blocks[bb].member_of_loop();
+        let mut loop_head = self[bb].member_of_loop();
         core::iter::from_fn(move || {
             let lh = loop_head?;
-            let loop_member = &self.blocks[lh.bb()].loop_member;
+            let loop_member = &self[lh.bb()].loop_member;
             let lhd = loop_member.as_ref().ok().unwrap();
             loop_head = lhd.nested;
             Some((lhd.loop_, lh))
@@ -444,13 +451,13 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
         match from.kind {
             BasicBlockKind::Return => (),
             BasicBlockKind::Block(.., to) => {
-                let to = &self.blocks[to];
+                let to = &self[to];
                 if to.preorder <= preorder || to.is_dead() {
                     self.blocks[bb].dead_branch = Ok(true);
                 }
             }
             BasicBlockKind::Branch(.., branch) => {
-                let dead_branch = match (self.blocks[branch[0]].is_dead(), self.blocks[branch[1]].is_dead()) {
+                let dead_branch = match (self[branch[0]].is_dead(), self[branch[1]].is_dead()) {
                     (true, true) => Ok(true),
                     (true, false) => Err(true),
                     (false, true) => Err(false),
@@ -479,7 +486,7 @@ impl<'a> Index<BasicBlock> for CfgData<'a, '_> {
 impl<'a> BasicBlockData<'a> {
     pub fn preorder_preds<'r>(&'r self, data: &'r CfgData) -> impl Iterator<Item = BasicBlock> + 'r {
         self.predecessors.iter().copied()
-            .filter(|&bb| data.blocks[bb].preorder < self.preorder)
+            .filter(|&bb| data[bb].preorder < self.preorder)
     }
 
     pub fn is_reachable(&self) -> bool {
@@ -603,7 +610,7 @@ impl PathConditions {
         let incoming = match Self::predecessors(cfg, bb) {
             Ok(incoming) => incoming,
             Err(bb) => {
-                let pred = &cfg.blocks[bb].pcs;
+                let pred = &cfg[bb].pcs;
                 let bb = pred.same_as().unwrap_or(bb);
                 return PathConditions::Ref(bb);
             }
@@ -651,15 +658,15 @@ impl PathConditions {
     }
 
     fn predecessors<'r>(cfg: &'r CfgData, curr: BasicBlock) -> Result<impl Iterator<Item = (BasicBlock, Option<bool>)> + 'r, BasicBlock> {
-        let curr_bb = &cfg.blocks[curr];
+        let curr_bb = &cfg[curr];
         let predecessors = curr_bb.preorder_preds(cfg);
         let mut pre = predecessors.map(move |pre| {
-            let bb = &cfg.blocks[pre];
+            let bb = &cfg[pre];
             let branch = bb.kind.branch(curr);
             // We have already executed the dead branch by the time we're at
             // `curr` and have assumed `false` in that branch.
             let nd_branch = branch.filter(|&b| Err(!b) != bb.dead_branch);
-            assert!(branch == nd_branch || cfg.blocks[bb.kind.branch_bool(!branch.unwrap())].preorder < curr_bb.preorder);
+            assert!(branch == nd_branch || cfg[bb.kind.branch_bool(!branch.unwrap())].preorder < curr_bb.preorder);
             (pre, nd_branch, branch.is_some())
         });
         match (pre.next(), pre.next()) {
@@ -700,26 +707,26 @@ impl Default for PathConditions {
 impl fmt::Debug for BasicBlockData<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use BasicBlockKind::*;
-        write!(f, "[{:?} / {}] ", self.bb, self.preorder)?;
+        write!(f, "{}. {:?} ", self.preorder, self.bb)?;
         match &self.kind {
-            Return => write!(f, "return"),
+            Return => write!(f, "🚪"),
             Block(block, ..) => {
-                write!(f, "block ({})", block.len())?;
+                write!(f, "📝  x{}", block.len())?;
                 if let Some(Statement::Label(label, ..)) = block.get(0) {
-                    write!(f, "\nlabel {}", label.0.0)?;
+                    write!(f, "\n🏷️  {}", label.0.0)?;
                 }
                 Ok(())
             }
             Branch(s, ..) => match s {
-                Statement::While(..) => write!(f, "while-branch"),
-                Statement::If(..) => write!(f, "if-branch"),
+                Statement::While(..) => write!(f, "⏳  while"),
+                Statement::If(..) => write!(f, "🌳  if"),
                 _ => unreachable!(),
             },
         }?;
         // write!(f, "\nImm dom: {:?}", self.idom)?;
         if let PathConditions::Or(pcs) = &self.pcs {
             if pcs.is_empty() {
-                write!(f, "\n||")?;
+                write!(f, "\n|| true")?;
             }
             for (path, last) in pcs.iter() {
                 write!(f, "\n|| ")?;
@@ -729,7 +736,17 @@ impl fmt::Debug for BasicBlockData<'_> {
                 write!(f, "{last:?}")?;
             }
         }
-        // write!(f, "\n{:?}", self.loop_member)?;
+        if let Some(loop_) = self.member_of_loop() {
+            let nfl = self.member_of_loop_non_framing();
+            if nfl == Some(loop_) {
+                write!(f, "\n🔄  in {:?}", loop_.bb())?;
+            } else {
+                write!(f, "\n🔄  head of {:?}", loop_.bb())?;
+                if let Some(nfl) = nfl {
+                    write!(f, ", nested {:?}", nfl.bb())?;
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -742,239 +759,5 @@ impl fmt::Debug for Branch {
         } else {
             write!(f, ".F")
         }
-    }
-}
-
-// dot
-
-use petgraph::visit::*;
-
-impl<'a> BasicBlockData<'a> {
-    fn edges_iter(&self) -> EdgesIter<'_> {
-        if self.dead_branch == Err(false) {
-            EdgesIter::FalseFirst(self.edges().iter().rev())
-        } else {
-            EdgesIter::TrueFirst(self.edges().iter())
-        }
-    }
-}
-
-pub enum EdgesIter<'a> {
-    TrueFirst(core::slice::Iter<'a, BasicBlock>),
-    FalseFirst(core::iter::Rev<core::slice::Iter<'a, BasicBlock>>),
-}
-
-impl Iterator for EdgesIter<'_> {
-    type Item = BasicBlock;
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            EdgesIter::TrueFirst(it) => it.next().copied(),
-            EdgesIter::FalseFirst(it) => it.next().copied(),
-        }
-    }
-}
-
-impl GraphBase for &CfgData<'_, '_> {
-    type EdgeId = (BasicBlock, BasicBlock);
-    type NodeId = BasicBlock;
-}
-impl GraphRef for &CfgData<'_, '_> {}
-
-impl IntoNodeIdentifiers for &CfgData<'_, '_> {
-    type NodeIdentifiers = typed_index_collections::TiSliceKeys<BasicBlock>;
-    fn node_identifiers(self) -> Self::NodeIdentifiers {
-        self.blocks.keys()
-    }
-}
-impl<'a> Data for &CfgData<'a, '_> {
-    type NodeWeight = BasicBlockData<'a>;
-    type EdgeWeight = ();
-}
-
-impl<'r, 'a> IntoNodeReferences for &'r CfgData<'a, '_> {
-    type NodeRef = BasicBlockRef<'r, 'a>;
-    type NodeReferences = core::iter::Map<typed_index_collections::TiEnumerated<core::slice::Iter<'r, BasicBlockData<'a>>, BasicBlock, &'r BasicBlockData<'a>>, fn((BasicBlock, &'r BasicBlockData<'a>)) -> BasicBlockRef<'r, 'a>>;
-
-    fn node_references(self) -> Self::NodeReferences {
-        self.blocks.iter_enumerated().map(BasicBlockRef)
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct BasicBlockRef<'r, 'a>((BasicBlock, &'r BasicBlockData<'a>));
-
-impl<'r, 'a> NodeRef for BasicBlockRef<'r, 'a> {
-    type NodeId = BasicBlock;
-    type Weight = BasicBlockData<'a>;
-
-    fn id(&self) -> Self::NodeId {
-        self.0.0
-    }
-
-    fn weight(&self) -> &Self::Weight {
-        self.0.1
-    }
-}
-
-impl<'r, 'a> IntoEdgeReferences for &'r CfgData<'a, '_> {
-    type EdgeRef = BasicBlockEdgeRef;
-    type EdgeReferences = core::iter::FlatMap<typed_index_collections::TiEnumerated<core::slice::Iter<'r, BasicBlockData<'a>>, BasicBlock, &'r BasicBlockData<'a>>, EdgeRefs<'r>, fn((BasicBlock, &'r BasicBlockData<'a>)) -> EdgeRefs<'r>>;
-
-    fn edge_references(self) -> Self::EdgeReferences {
-        fn edges<'r>((i, b): (BasicBlock, &'r BasicBlockData)) -> EdgeRefs<'r> {
-            EdgeRefs(i, b.edges_iter())
-        }
-        self.blocks.iter_enumerated().flat_map(edges)
-    }
-}
-
-pub struct EdgeRefs<'r>(BasicBlock, EdgesIter<'r>);
-
-impl Iterator for EdgeRefs<'_> {
-    type Item = BasicBlockEdgeRef;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.1.next().map(|to| BasicBlockEdgeRef((self.0, to)))
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct BasicBlockEdgeRef((BasicBlock, BasicBlock));
-
-impl EdgeRef for BasicBlockEdgeRef {
-    type NodeId = BasicBlock;
-    type EdgeId = (BasicBlock, BasicBlock);
-    type Weight = ();
-    fn source(&self) -> Self::NodeId {
-        self.0 .0
-    }
-    fn target(&self) -> Self::NodeId {
-        self.0 .1
-    }
-    fn weight(&self) -> &Self::Weight {
-        &()
-    }
-    fn id(&self) -> Self::EdgeId {
-        self.0
-    }
-}
-
-impl NodeIndexable for &CfgData<'_, '_> {
-    fn node_bound(&self) -> usize {
-        self.blocks.len()
-    }
-    fn to_index(&self, a: Self::NodeId) -> usize {
-        a.into()
-    }
-    fn from_index(&self, i: usize) -> Self::NodeId {
-        i.into()
-    }
-}
-
-impl GraphProp for &CfgData<'_, '_> {
-    type EdgeType = petgraph::Directed;
-}
-
-impl VisitMap<BasicBlock> for TiVec<BasicBlock, bool> {
-    fn visit(&mut self, a: BasicBlock) -> bool {
-        !core::mem::replace(&mut self[a], true)
-    }
-    fn is_visited(&self, a: &BasicBlock) -> bool {
-        self[*a]
-    }
-}
-
-impl Visitable for &CfgData<'_, '_> {
-    type Map = TiVec<BasicBlock, bool>;
-    fn visit_map(&self) -> Self::Map {
-        self.blocks.iter().map(|_| false).collect()
-    }
-    fn reset_map(self: &Self, map: &mut Self::Map) {
-        map.fill(false);
-    }
-}
-
-impl<'r> IntoNeighbors for &'r CfgData<'_, '_> {
-    type Neighbors = EdgesIter<'r>;
-    fn neighbors(self, a: BasicBlock) -> Self::Neighbors {
-        self.blocks[a].edges_iter()
-    }
-}
-
-impl<'r> IntoNeighborsDirected for &'r CfgData<'_, '_> {
-    type NeighborsDirected = EdgesIter<'r>;
-    fn neighbors_directed(self, a: BasicBlock, dir: petgraph::Direction) -> Self::NeighborsDirected {
-        match dir {
-            petgraph::Direction::Incoming => EdgesIter::TrueFirst(self.blocks[a].predecessors.iter()),
-            petgraph::Direction::Outgoing => self.neighbors(a),
-        }
-    }
-}
-
-impl<'a, 'tcx> CfgData<'a, 'tcx> {
-    pub fn dump_dot(&self, path: &str) {
-        use petgraph::dot::*;
-        let graph = NodeFiltered::from_fn(self, |n| self.blocks[n].is_reachable());
-
-        let gea = |_, er: BasicBlockEdgeRef| {
-            let (from_bb, to_bb) = (er.source(), er.target());
-            let (from, to) = (&self.blocks[from_bb], &self.blocks[to_bb]);
-            let back_edge = from.preorder >= to.preorder;
-
-            let from_loop = from.member_of_loop();
-            let to_loop = to.member_of_loop();
-            let loop_change = from_loop != to_loop;
-            let loop_entry = loop_change && from_loop.is_none_or(|fl| self.member_of_loops(to_bb).any(|(_, tl)| fl == tl));
-            let problem_entry = loop_entry && to.member_of_loop_non_framing() != from_loop;
-
-            let style = if back_edge {
-                "dashed"
-            } else {
-                "solid"
-            };
-            let constraint = if back_edge {
-                "false"
-            } else {
-                "true"
-            };
-            let color = if problem_entry {
-                "red"
-            } else {
-                "black"
-            };
-            format!("style={style:?} color={color:?} constraint={constraint:?}")
-        };
-        let gna = |_, bbr: BasicBlockRef<'_, '_>| {
-            let bbd = bbr.0.1;
-            let style = match bbd.is_dead() {
-                true => "dashed",
-                false => "solid",
-            };
-            let color = match &bbd.loop_member {
-                Ok(..) => "forestgreen",
-                Err(lm) if !lm.loop_exit.is_empty() => if bbd.back_edge_to().is_some() {
-                    "purple"
-                } else {
-                    "blue"
-                },
-                Err(..) if bbd.back_edge_to().is_some() => "orange",
-                Err(..) => "black",
-            };
-            format!("shape=box color={color:?} style={style:?}")
-        };
-        let dot = Dot::with_attr_getters(
-            &graph,
-            &[Config::EdgeNoLabel],
-            &gea,
-            &gna,
-        );
-        // Dump dot to file
-        use std::fs::File;
-        use std::io::Write;
-        let path = std::path::Path::new(path);
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        let mut file = File::create(path).unwrap();
-        write!(file, "{:?}", dot).unwrap();
     }
 }

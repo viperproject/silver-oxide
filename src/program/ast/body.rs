@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::{program::{ast::newline, Const, DefId, Ty}, TiVec};
+use crate::{program::{ast::newline, Const, DefId, Ty, TyWalker}, TiVec};
 
 use super::{exp::Exp, idx::*, resource::ResourceExp};
 
@@ -51,16 +51,57 @@ pub enum FoldUnfold {
 }
 
 #[derive(Clone, Copy)]
-pub enum Operand<'tcx> {
+pub struct Operand<'tcx> {
+    pub ty: Ty<'tcx>,
+    pub kind: OperandKind<'tcx>,
+}
+
+#[derive(Clone, Copy)]
+pub enum OperandKind<'tcx> {
     Const(Const<'tcx>),
     Local(Local),
 }
 
 impl<'tcx> Operand<'tcx> {
     pub fn as_const(self) -> Option<Const<'tcx>> {
-        match self {
-            Operand::Const(c) => Some(c),
+        match self.kind {
+            OperandKind::Const(c) => Some(c),
             _ => None,
+        }
+    }
+}
+
+impl<'tcx> Body<'tcx> {
+    pub fn walk<'a>(&'a self) -> StmtWalker<'a, 'tcx> {
+        let mut walker = StmtWalker::default();
+        walker.stack = self.blocks.iter();
+        walker
+    }
+
+    pub fn walk_locals(&self) -> TyWalker<'tcx> {
+        let mut walker = TyWalker::default();
+        for &ty in self.locals.iter().rev() {
+            walker.add_ty(ty);
+        }
+        walker
+    }
+}
+
+#[derive(Default)]
+pub struct StmtWalker<'a, 'tcx> {
+    block: core::slice::Iter<'a, Statement<'tcx>>,
+    stack: core::slice::Iter<'a, Block<'tcx>>,
+}
+
+impl<'a, 'tcx> Iterator for StmtWalker<'a, 'tcx> {
+    type Item = &'a Statement<'tcx>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(stmt) = self.block.next() {
+                return Some(stmt);
+            }
+            self.block = self.stack.next()?.stmts.iter();
         }
     }
 }
@@ -171,9 +212,9 @@ impl fmt::Debug for StatementKind<'_> {
 
 impl fmt::Debug for Operand<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Operand::Const(c) => write!(f, "{c:?}"),
-            Operand::Local(l) => write!(f, "{l:?}"),
+        match self.kind {
+            OperandKind::Const(c) => write!(f, "{c:?}"),
+            OperandKind::Local(l) => write!(f, "{l:?}"),
         }
     }
 }

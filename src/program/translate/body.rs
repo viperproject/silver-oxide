@@ -1,14 +1,12 @@
-use crate::{parse::{self, AssignRhs, ConstKind, ExpKind, StarOrNames, UnOp}, program::{body::{Block, BlockConds, Body, FoldUnfold, InhaleExhale, Operand, Statement, StatementKind}, exp::{Exp, ExpOperand}, resource::ResourceExp, ArgRef, BasicBlock, DefId, Local, MemberKind, Ty, TyKind}, HashMap};
+use crate::{parse::{self, AssignRhs, ConstKind, ExpKind, StarOrNames, UnOp}, program::{body::{Block, BlockConds, Body, FoldUnfold, InhaleExhale, Operand, OperandKind, Statement, StatementKind}, exp::{Exp, ExpOperand, ExpOperandKind}, resource::ResourceExp, ArgRef, BasicBlock, DefId, Local, MemberKind, Ty, TyKind}, HashMap};
 
 use super::{cfg::Cfg, BasicBlockKind, LoopHead, TranslationCtxt};
 
 impl<'tcx> TranslationCtxt<'_, 'tcx> {
     pub(crate) fn translate_body(mut self, body: &parse::StmtBlock) -> Body<'tcx> {
         self.add_body(body);
-        let cfg = Cfg::new(&self.tcx, self.goto_labels.iter().copied(), body);
-
         let name = self.tcx.item_name(self.id).unwrap();
-        cfg.dump_dot(&format!("log/cfg/{name}.dot"));
+        let cfg = Cfg::new(&self.tcx, name, self.goto_labels.iter().copied(), body);
 
         let mut result = Body::default();
         let mut branches = HashMap::<BasicBlock, Operand<'tcx>>::default();
@@ -44,7 +42,7 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                 curr.stmts.push(Statement { kind });
 
                 let tmp = self.locals.push_and_get_key(self.tcx.types.heap_);
-                let kind = StatementKind::Eval(tmp, Exp::new_use(ExpOperand::Local(self.curr_heap()), self.tcx.types.heap_));
+                let kind = StatementKind::Eval(tmp, Exp::new_use(ExpOperandKind::Local(self.curr_heap()), self.tcx.types.heap_));
                 curr.stmts.push(Statement { kind });
                 loop_frames.insert(lh, (tmp, inv.clone()));
 
@@ -70,7 +68,7 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                         parse::Statement::If(cond, ..) => cond,
                         _ => unreachable!(),
                     };
-                    let (cond, _) = self.translate_exp_local(cond, self.tcx.types.bool_, curr);
+                    let cond = self.translate_exp_local(cond, self.tcx.types.bool_, curr);
                     branches.insert(bb, cond);
                 }
             }
@@ -79,7 +77,7 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                 let kind = StatementKind::Ghost(None, InhaleExhale::Exhale, self.curr_heap(), inv);
                 curr.stmts.push(Statement { kind });
 
-                let false_ = ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::bool(false)));
+                let false_ = ExpOperandKind::Const(self.tcx.interner.mk_const(ConstKind::bool(false)));
                 let false_ = ResourceExp::pure(Exp::new_use(false_, self.tcx.types.bool_));
                 let kind = StatementKind::Ghost(None, InhaleExhale::Inhale, self.curr_heap(), false_);
                 curr.stmts.push(Statement { kind });
@@ -114,8 +112,8 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
             Refute(..) => todo!(),
             Fold(acc) | Unfold(acc) => {
                 let ty = self.any_resource_id();
-                let (resource, _) = self.translate_exp_local(&acc.acc.loc, ty, block);
-                let (perm, _) = self.translate_exp_local(&acc.perm, self.tcx.types.real_, block);
+                let resource = self.translate_exp_local(&acc.acc.loc, ty, block);
+                let perm = self.translate_exp_local(&acc.perm, self.tcx.types.real_, block);
                 let fu = match stmt {
                     Fold(_) => FoldUnfold::Fold,
                     Unfold(_) => FoldUnfold::Unfold,
@@ -143,8 +141,8 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                 (self.locals[local], Ok(local))
             }
             ExpKind::UnOp(UnOp::Deref, rcv) => {
-                let (rcv, ty) = self.translate_exp_local(rcv, self.any_resource_id(), block);
-                let TyKind::ResourceId(inner) = ty.kind() else {
+                let rcv = self.translate_exp_local(rcv, self.any_resource_id(), block);
+                let TyKind::ResourceId(inner) = rcv.ty.kind() else {
                     unreachable!()
                 };
                 (*inner, Err(rcv))
@@ -167,7 +165,8 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                     } else {
                         let tmp = self.locals.push_and_get_key(ty);
                         block.stmts.push(Statement { kind: StatementKind::Eval(tmp, value) });
-                        block.stmts.push(Statement { kind: StatementKind::Assign(self.curr_heap(), rcv, Operand::Local(tmp)) });
+                        let tmp = Operand { ty, kind: OperandKind::Local(tmp) };
+                        block.stmts.push(Statement { kind: StatementKind::Assign(self.curr_heap(), rcv, tmp) });
                     },
                 }
             }
@@ -183,13 +182,14 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                     Err(rcv) => {
                         let tmp = self.locals.push_and_get_key(self.tcx.types.ref_);
                         self.translate_inhale_new(tmp, new, block);
-                        let kind = StatementKind::Assign(self.curr_heap(), rcv, Operand::Local(tmp));
+                        let tmp = Operand { ty: self.tcx.types.ref_, kind: OperandKind::Local(tmp) };
+                        let kind = StatementKind::Assign(self.curr_heap(), rcv, tmp);
                         block.stmts.push(Statement { kind });
                     }
                 };
             }
             AssignRhs::Call(ident, args) => {
-                let callee = self.tcx.get_callee(ident);
+                let callee = self.tcx.resolve_global_ref(ident);
                 let sig = self.tcx.fn_sig(callee).unwrap();
 
                 let mut post_call = Vec::new();
@@ -198,14 +198,15 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                     assert_eq!(ty, *ety);
                     tgt.unwrap_or_else(|nd| {
                         let tmp = self.locals.push_and_get_key(*ety);
-                        post_call.push(Statement { kind: StatementKind::Assign(self.curr_heap(), nd, Operand::Local(tmp)) });
+                        let tmp_nd = Operand { ty: *ety, kind: OperandKind::Local(tmp) };
+                        post_call.push(Statement { kind: StatementKind::Assign(self.curr_heap(), nd, tmp_nd) });
                         tmp
                     })
                 }).collect();
 
-                let heap = Operand::Local(self.params[&ArgRef::Heap(None)]);
+                let heap = Operand { ty: self.tcx.types.heap_, kind: OperandKind::Local(self.params[&ArgRef::Heap(None)]) };
                 let args = args.iter().zip(sig.caller_args().1).map(|(arg, ty)| {
-                    self.translate_exp_local(arg, *ty, block).0
+                    self.translate_exp_local(arg, *ty, block)
                 }).chain([heap]).collect();
                 block.stmts.push(Statement { kind: StatementKind::Call(targets, callee, args) });
                 block.stmts.extend(post_call);
@@ -221,28 +222,29 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
                 all.map(|(id, _)| DefId::from(id)).collect()
             }
             StarOrNames::Names(idents) =>
-                idents.iter().map(|ident| self.tcx.get_callee(ident)).collect(),
+                idents.iter().map(|ident| self.tcx.resolve_global_ref(ident)).collect(),
         };
-        let res = self.translate_resource_for_new(ExpOperand::Local(tmp), fields);
+        let tmp = ExpOperand { ty: self.locals[tmp], kind: ExpOperandKind::Local(tmp) };
+        let res = self.translate_resource_for_new(tmp, fields);
         block.stmts.push(Statement { kind: StatementKind::Ghost(None, InhaleExhale::Inhale, self.curr_heap(), res) });
     }
 
-    fn translate_exp_local(&mut self, exp: &parse::Exp, ty: Ty<'tcx>, block: &mut Block<'tcx>) -> (Operand<'tcx>, Ty<'tcx>) {
+    fn translate_exp_local(&mut self, exp: &parse::Exp, ty: Ty<'tcx>, block: &mut Block<'tcx>) -> Operand<'tcx> {
         let exp = self.translate_exp_inner(exp, ty, self.curr_heap_nd());
         let ty = exp.result_ty();
-        (exp.as_operand().unwrap_or_else(|| {
+        exp.as_operand().unwrap_or_else(|| {
             let local = self.locals.push_and_get_key(ty);
             block.stmts.push(Statement { kind: StatementKind::Eval(local, exp) });
-            Operand::Local(local)
-        }), ty)
+            Operand { ty, kind: OperandKind::Local(local) }
+        })
     }
 
     fn curr_heap(&self) -> Local {
         self.params[&ArgRef::Heap(None)]
     }
 
-    fn curr_heap_nd(&self) -> Option<ExpOperand<'tcx>> {
-        Some(ExpOperand::Local(self.curr_heap()))
+    fn curr_heap_nd(&self) -> Option<ExpOperandKind<'tcx>> {
+        Some(ExpOperandKind::Local(self.curr_heap()))
     }
 }
 

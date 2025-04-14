@@ -1,7 +1,7 @@
 use core::ops::*;
 
 use crate::parse::{BinOp, ConstKind, UnOp};
-use crate::program::exp::ExpCond;
+use crate::program::exp::{ExpCond, ExpOperandKind};
 use crate::program::MemberKind;
 use crate::program::{exp::{ExpLine, ExpLineKind, ExpOperand}, Const};
 
@@ -12,18 +12,20 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         use ExpLineKind::*;
         match &mut line.kind {
             Use(op) => Ok(*op),
-            Ternary([ExpOperand::Const(_), ..]) => unreachable!(),
+            Ternary([ExpOperand { kind: ExpOperandKind::Const(_), .. }, ..]) => unreachable!(),
             Ternary([c, t, e]) => match (t.as_const().and_then(Const::as_bool), e.as_const().and_then(Const::as_bool)) {
-                (Some(b@true), Some(true)) | (Some(b@false), Some(false)) =>
-                    Ok(ExpOperand::Const(self.tcx.tcx.interner.mk_const(ConstKind::bool(b)))),
+                (Some(b@true), Some(true)) | (Some(b@false), Some(false)) => {
+                    let kind = ExpOperandKind::Const(self.tcx.tcx.interner.mk_const(ConstKind::bool(b)));
+                    Ok(ExpOperand { ty: self.tcx.tcx.types.bool_, kind })
+                }
                 (Some(true), Some(false)) => Ok(*c),
                 (Some(false), Some(true)) => Ok(self.negate(*c)),
                 _ => Err(line),
             }
-            UnOp(op, ExpOperand::Const(c)) =>
-                self.optimise_unop(*op, *c).map(ExpOperand::Const).ok_or(line),
-            BinOp(op, [ExpOperand::Const(lhs), ExpOperand::Const(rhs)]) =>
-                self.optimise_binop(*op, *lhs, *rhs).map(ExpOperand::Const).ok_or(line),
+            UnOp(op, ExpOperand { kind: ExpOperandKind::Const(c), .. }) =>
+                self.optimise_unop(*op, *c).map(ExpOperandKind::Const).map(|kind| ExpOperand { ty: line.ty, kind }).ok_or(line),
+            BinOp(op, [ExpOperand { kind: ExpOperandKind::Const(lhs), .. }, ExpOperand { kind: ExpOperandKind::Const(rhs), .. }]) =>
+                self.optimise_binop(*op, *lhs, *rhs).map(ExpOperandKind::Const).map(|kind| ExpOperand { ty: line.ty, kind }).ok_or(line),
             // TODO?
             // BinOp(op, ExpOperand::Const(lhs), rhs) if lhs.as_bool().is_some() => {
             //     todo!()

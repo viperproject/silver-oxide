@@ -1,13 +1,15 @@
-use crate::{parse::{ConstHeapKind, ConstKind, HeapExp}, program::{exp::{Exp, ExpLineKind, ExpOperand}, resource::{Resource, ResourceExp}, DefId, ExpLocal}};
+use crate::{parse::{ConstHeapKind, ConstKind, HeapExp}, program::{exp::{Exp, ExpLineKind, ExpOperand, ExpOperandKind}, resource::{Resource, ResourceExp}, DefId, ExpLocal}};
 
 use super::TranslationCtxt;
 
 impl<'tcx> TranslationCtxt<'_, 'tcx> {
-    pub(crate) fn translate_resource(&mut self, h: &HeapExp, heap: Option<ExpOperand<'tcx>>) -> ResourceExp<'tcx> {
+    pub(crate) fn translate_resource(&mut self, h: &HeapExp, heap: Option<ExpOperandKind<'tcx>>) -> ResourceExp<'tcx> {
+        let locals = heap.is_none().then(|| self.locals.clone()).unwrap_or_default();
         let heap = heap.unwrap_or_else(|| {
-            ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::Heap(ConstHeapKind::SelfFraming)))
+            ExpOperandKind::Const(self.tcx.interner.mk_const(ConstKind::Heap(ConstHeapKind::SelfFraming)))
         });
         let mut r = ResourceExp::default();
+        r.locals = locals;
         r.resources = h.res.iter().map(|r| {
             let mut et = self.prepare_translator(Some(heap));
             for (neg, cond) in &r.cond {
@@ -26,15 +28,18 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
 
     /// Translate the resource represented by a `new(...)`
     pub(crate) fn translate_resource_for_new(&self, tmp: ExpOperand<'tcx>, fields: Vec<DefId>) -> ResourceExp<'tcx> {
+        assert_eq!(tmp.ty, self.tcx.types.ref_);
         let mut r = ResourceExp::default();
         r.resources = fields.into_iter().map(|f| {
             let ty = self.tcx.fn_sig(f).unwrap().returns().1;
             assert_eq!(ty.len(), 1);
             let exp = Exp::new_simple(ty[0], ExpLineKind::Call(f, vec![tmp]));
-            let perm = ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::write()));
-            Resource { exp, cond: Some(Default::default()), loc: ExpOperand::ExpLocal(0, ExpLocal::ZERO), perm }
+            let loc = exp.result();
+            let perm = ExpOperandKind::Const(self.tcx.interner.mk_const(ConstKind::write()));
+            let perm = ExpOperand { ty: self.tcx.types.real_, kind: perm };
+            Resource { exp, cond: Some(Default::default()), loc, perm }
         }).collect();
-        r.pure = Exp::new_use(ExpOperand::Const(self.tcx.interner.mk_const(ConstKind::Bool(true))), self.tcx.types.bool_);
+        r.pure = Exp::new_use(ExpOperandKind::Const(self.tcx.interner.mk_const(ConstKind::Bool(true))), self.tcx.types.bool_);
         r
     }
 }

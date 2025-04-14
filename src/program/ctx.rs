@@ -81,7 +81,7 @@ impl<'tcx> TyCtxt<'tcx> {
         self.0.globals.calculate_kinds(&self.0.interner, &program);
     }
 
-    pub(crate) fn get_callee(&self, ident: &Ident) -> DefId {
+    pub(crate) fn resolve_global_ref(&self, ident: &Ident) -> DefId {
         let ident = self.interner.mk_symbol(ident);
         self.global_ref(ident).unwrap()
     }
@@ -106,10 +106,10 @@ impl<'tcx> TyCtxt<'tcx> {
             Type::Real => self.types.real_,
             Type::Ref => self.types.ref_,
             Type::Domain(ident, items) => {
-                let ident = self.interner.mk_symbol(ident);
+                let id = self.resolve_global_ref(ident);
                 let items = items.iter().map(|item| self.translate_type(item)).collect();
                 let items = self.interner.mk_ty_list(items);
-                self.interner.mk_ty_from_kind(TyKind::Domain(ident, items))
+                self.interner.mk_ty_from_kind(TyKind::Domain(id, items))
             }
         }
     }

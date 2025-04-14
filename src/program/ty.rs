@@ -54,7 +54,7 @@ pub enum TyKind<'tcx> {
     Int,
     Real,
     Ref,
-    Domain(Symbol<'tcx>, TyList<'tcx>),
+    Domain(DefId, TyList<'tcx>),
     /// The return ty of a `Field` or `Predicate`, the only valid operation on
     /// this ty is to deref/perm it with a heap of `Resource`. A deref returns
     /// the contained type.
@@ -86,6 +86,40 @@ pub struct CompoundId {
     pub contract: Option<bool>,
 }
 
+#[derive(Default)]
+pub struct TyWalker<'tcx> {
+    stack: Vec<Ty<'tcx>>,
+}
+
+impl<'tcx> Ty<'tcx> {
+    pub fn walk(self) -> TyWalker<'tcx> {
+        TyWalker { stack: vec![self] }
+    }
+}
+
+impl<'tcx> TyWalker<'tcx> {
+    pub(super) fn add_ty(&mut self, ty: Ty<'tcx>) {
+        self.stack.push(ty);
+    }
+}
+
+impl<'tcx> Iterator for TyWalker<'tcx> {
+    type Item = Ty<'tcx>;
+    fn next(&mut self) -> Option<Self::Item> {
+        let ty = self.stack.pop()?;
+        match *ty.kind() {
+            TyKind::Domain(_, ty_list) => {
+                self.stack.extend(ty_list.as_slice());
+            }
+            TyKind::ResourceId(ty) => {
+                self.stack.push(ty);
+            }
+            _ => {}
+        }
+        Some(ty)
+    }
+}
+
 // fmt
 
 impl fmt::Debug for Ty<'_> {
@@ -96,7 +130,7 @@ impl fmt::Debug for Ty<'_> {
             TyKind::Real => write!(f, "real"),
             TyKind::Ref => write!(f, "ref"),
             TyKind::Domain(symbol, ty_list) =>
-                write!(f, "{symbol}{ty_list:?}"),
+                write!(f, "{symbol:?}{ty_list:?}"),
             TyKind::ResourceId(ty) =>
                 write!(f, "&{ty:?}"),
             TyKind::Compound(compound_id) =>

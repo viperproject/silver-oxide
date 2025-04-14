@@ -318,6 +318,7 @@ pub struct Field(pub Signature);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Domain {
     pub name: IdnDecl,
+    pub params: Vec<IdnDecl>,
     pub interpretation: Vec<(Ident, String)>,
 }
 

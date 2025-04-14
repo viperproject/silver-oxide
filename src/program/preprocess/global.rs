@@ -33,13 +33,17 @@ impl<'tcx> Globals<'tcx> {
         use Declaration::*;
         let mut domain = None;
         let mut resolve_domain = |d| domain = Some(self.resolved[&interner.mk_symbol(d)].into());
-        let sig = decl.signature().map(|sig|
+        let mut sig = decl.signature().map(|sig|
             DeclSig { name: name.unwrap(), args: Some(sig.args.len()), rets: sig.ret.len() }
         );
         let kind = match decl {
             Import(..) => MemberKind::Import,
             Define(..) => MemberKind::Define,
-            Domain(..) => MemberKind::Domain,
+            Domain(domain) => {
+                let name = interner.mk_symbol(&domain.name.0);
+                sig = Some(DeclSig { name, args: Some(domain.params.len()), rets: 1 });
+                MemberKind::Domain
+            }
             DomainElement(crate::parse::DomainElement { domain, kind: DomainElementKind::Axiom(..) }) => {
                 resolve_domain(domain);
                 MemberKind::DomainAxiom

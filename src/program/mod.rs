@@ -5,6 +5,7 @@ mod intern;
 mod ctx;
 mod std;
 mod preprocess;
+mod dot;
 pub mod translate;
 
 pub use ast::*;
@@ -14,6 +15,7 @@ pub use intern::*;
 pub use ctx::*;
 pub use std::*;
 pub use preprocess::*;
+pub use dot::*;
 
 use crate::parse::Program;
 
