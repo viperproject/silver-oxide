@@ -289,9 +289,20 @@ walk_enum!(
     Arg(a),
     Type(t)
 );
-walk_struct!(HeapExpBlock, walk_heap_exp_block, walk_mut_heap_exp_block, 0);
+walk_struct!(
+    HeapExpBlock,
+    walk_heap_exp_block,
+    walk_mut_heap_exp_block,
+    0
+);
 walk_struct!(ExpBlock, walk_exp_block, walk_mut_exp_block, 0);
-walk_struct!(ResourceExp, walk_resource_exp, walk_mut_resource_exp, cond, acc);
+walk_struct!(
+    ResourceExp,
+    walk_resource_exp,
+    walk_mut_resource_exp,
+    cond,
+    acc
+);
 walk_struct!(HeapExp, walk_heap_exp, walk_mut_heap_exp, res, exp);
 walk_box!(Exp, walk_exp, walk_mut_exp);
 walk_enum!(
@@ -382,7 +393,17 @@ walk_enum!(
     Range,
     InhaleExhale
 );
-walk_enum!(UnOp, walk_un_op, walk_mut_un_op, Not, Neg, IntToReal, Deref, Abs, Perm);
+walk_enum!(
+    UnOp,
+    walk_un_op,
+    walk_mut_un_op,
+    Not,
+    Neg,
+    IntToReal,
+    Deref,
+    Abs,
+    Perm
+);
 walk_struct!(Trigger, walk_trigger, walk_mut_trigger, exp);
 walk_enum!(
     ResAccess,
@@ -451,7 +472,14 @@ walk_enum!(
 );
 walk_struct!(LocAccess, walk_loc_access, walk_mut_loc_access, loc);
 walk_struct!(Field, walk_field, walk_mut_field, 0);
-walk_struct!(Domain, walk_domain, walk_mut_domain, name, params, interpretation);
+walk_struct!(
+    Domain,
+    walk_domain,
+    walk_mut_domain,
+    name,
+    params,
+    interpretation
+);
 walk_struct!(
     Function,
     walk_function,
@@ -623,7 +651,6 @@ walk_struct!(bool, walk_bool, walk_mut_bool);
 walk_struct!(BigInt, walk_big_int, walk_mut_big_int);
 walk_struct!(BigRational, walk_big_rational, walk_mut_big_rational);
 walk_struct!(usize, walk_usize, walk_mut_usize);
-
 
 pub trait AstVisitable {
     fn visit<'a>(self, walker: &mut impl AstWalker<'a>);

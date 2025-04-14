@@ -28,18 +28,17 @@ impl<'tcx> Interner<'tcx> {
     }
 
     pub fn mk_const_ref(&self, const_: &ConstKind) -> Const<'tcx> {
-        Self::mk_const_inner(const_, |const_| {
-            self.0.const_.intern_ref(const_)
-        })
+        Self::mk_const_inner(const_, |const_| self.0.const_.intern_ref(const_))
     }
 
     pub fn mk_const(&self, const_: ConstKind) -> Const<'tcx> {
-        Self::mk_const_inner(const_, |const_| {
-            self.0.const_.intern(const_)
-        })
+        Self::mk_const_inner(const_, |const_| self.0.const_.intern(const_))
     }
 
-    fn mk_const_inner<T: Borrow<ConstKind>>(const_: T, intern: impl FnOnce(T) -> &'tcx ConstKind) -> Const<'tcx> {
+    fn mk_const_inner<T: Borrow<ConstKind>>(
+        const_: T,
+        intern: impl FnOnce(T) -> &'tcx ConstKind,
+    ) -> Const<'tcx> {
         use ConstKind::*;
         let const_ = match const_.borrow() {
             Bool(true) => &Bool(true),
@@ -60,7 +59,7 @@ pub struct Interned<'tcx, T: ?Sized>(pub(crate) &'tcx T);
 
 impl<T: ?Sized> Clone for Interned<'_, T> {
     fn clone(&self) -> Self {
-        Self(self.0)
+        *self
     }
 }
 impl<T: ?Sized> Copy for Interned<'_, T> {}
@@ -77,7 +76,7 @@ impl<T: ?Sized> core::hash::Hash for Interned<'_, T> {
     }
 }
 
-impl<'tcx> Default for Interner<'tcx> {
+impl Default for Interner<'_> {
     fn default() -> Self {
         Self(Box::leak(Default::default()))
     }

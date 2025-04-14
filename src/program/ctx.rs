@@ -1,8 +1,15 @@
-use ::std::{mem::ManuallyDrop, ops::{Deref, DerefMut}, sync::Mutex};
+use ::std::{
+    mem::ManuallyDrop,
+    ops::{Deref, DerefMut},
+    sync::Mutex,
+};
 
 use crate::parse::{Ident, Type};
 
-use super::{member::{Member, Members}, *};
+use super::{
+    member::{Member, Members},
+    *,
+};
 
 pub struct TyCtxt<'tcx>(Box<GlobalCtxt<'tcx>>);
 
@@ -12,7 +19,7 @@ impl<'tcx> Deref for TyCtxt<'tcx> {
         &self.0
     }
 }
-impl<'tcx> DerefMut for TyCtxt<'tcx> {
+impl DerefMut for TyCtxt<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
@@ -72,13 +79,13 @@ impl<'tcx> TyCtxt<'tcx> {
     }
 
     pub fn global_ref(&self, symbol: Symbol<'tcx>) -> Option<DefId> {
-        self.std.global_ref(symbol).or_else(|| {
-            self.globals.resolved.get(&symbol).map(|id| id.into())
-        })
+        self.std
+            .global_ref(symbol)
+            .or_else(|| self.globals.resolved.get(&symbol).map(|id| id.into()))
     }
 
     pub(super) fn calculate_kinds(&mut self, program: &Program) {
-        self.0.globals.calculate_kinds(&self.0.interner, &program);
+        self.0.globals.calculate_kinds(&self.0.interner, program);
     }
 
     pub(crate) fn resolve_global_ref(&self, ident: &Ident) -> DefId {
@@ -126,7 +133,7 @@ unsafe impl Send for TyCtxtCopy<'static> {}
 impl<'tcx> Deref for TyCtxtCopy<'tcx> {
     type Target = TyCtxt<'tcx>;
     fn deref(&self) -> &Self::Target {
-        &self.0.as_ref().unwrap()
+        self.0.as_ref().unwrap()
     }
 }
 
@@ -137,15 +144,17 @@ impl<'tcx> Default for TyCtxt<'tcx> {
         let interner = Interner::default();
         let types = Types::new(&interner);
         let std = Std::new(&interner);
-        let gcx = GlobalCtxt { interner, types, std, globals: Default::default(), members: Default::default() };
+        let gcx = GlobalCtxt {
+            interner,
+            types,
+            std,
+            globals: Default::default(),
+            members: Default::default(),
+        };
         let tcx = TyCtxt(Box::new(gcx));
 
-        let tcx_copy = unsafe {
-            core::mem::transmute::<&TyCtxt<'tcx>, &TyCtxt<'static>>(&tcx)
-        };
-        let tcx_copy = unsafe {
-            ManuallyDrop::new(core::ptr::read(tcx_copy))
-        };
+        let tcx_copy = unsafe { core::mem::transmute::<&TyCtxt<'tcx>, &TyCtxt<'static>>(&tcx) };
+        let tcx_copy = unsafe { ManuallyDrop::new(core::ptr::read(tcx_copy)) };
         TCX.lock().unwrap().0.replace(tcx_copy);
 
         tcx

@@ -4,7 +4,11 @@ use petgraph::visit::*;
 
 use crate::TiVec;
 
-use super::{member::DepGraph, translate::{BasicBlockData, CfgData}, BasicBlock};
+use super::{
+    member::DepGraph,
+    translate::{BasicBlockData, CfgData},
+    BasicBlock,
+};
 
 pub(crate) fn log_dir() -> String {
     let path = std::env::var("VIPER_LOG");
@@ -24,7 +28,7 @@ pub(crate) trait CanDot {
         // Dump dot to file
         let file = std::path::Path::new(&path);
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-        let mut file = std::fs::File::create(&file).unwrap();
+        let mut file = std::fs::File::create(file).unwrap();
         self.write_dot(&mut file).unwrap();
         Some(path)
     }
@@ -35,28 +39,19 @@ pub(crate) trait CanDot {
 
 impl CanDot for DepGraph {
     fn filename(&self) -> String {
-        format!("callgraph")
+        "callgraph".to_string()
     }
 
     fn write_dot(&self, f: &mut impl std::io::Write) -> std::io::Result<()> {
         use petgraph::dot::*;
-        let gea = |_, _| {
-            format!("")
-        };
-        let gna = |_, _| {
-            format!("")
-        };
-        let dot = Dot::with_attr_getters(
-            self,
-            &[Config::EdgeNoLabel],
-            &gea,
-            &gna,
-        );
+        let gea = |_, _| "".to_string();
+        let gna = |_, _| "".to_string();
+        let dot = Dot::with_attr_getters(self, &[Config::EdgeNoLabel], &gea, &gna);
         write!(f, "{:?}", dot)
     }
 }
 
-impl<'a, 'tcx> CanDot for CfgData<'a, 'tcx> {
+impl CanDot for CfgData<'_, '_> {
     fn filename(&self) -> String {
         format!("cfg/{}", self.name.as_str())
     }
@@ -73,55 +68,41 @@ impl<'a, 'tcx> CanDot for CfgData<'a, 'tcx> {
             let from_loop = from.member_of_loop();
             let to_loop = to.member_of_loop();
             let loop_change = from_loop != to_loop;
-            let loop_entry = loop_change && from_loop.is_none_or(|fl| self.member_of_loops(to_bb).any(|(_, tl)| fl == tl));
+            let loop_entry = loop_change
+                && from_loop.is_none_or(|fl| self.member_of_loops(to_bb).any(|(_, tl)| fl == tl));
             let problem_entry = loop_entry && to.member_of_loop_non_framing() != from_loop;
 
-            let style = if back_edge {
-                "dashed"
-            } else {
-                "solid"
-            };
-            let constraint = if back_edge {
-                "false"
-            } else {
-                "true"
-            };
-            let color = if problem_entry {
-                "red"
-            } else {
-                "black"
-            };
+            let style = if back_edge { "dashed" } else { "solid" };
+            let constraint = if back_edge { "false" } else { "true" };
+            let color = if problem_entry { "red" } else { "black" };
             format!("style={style:?} color={color:?} constraint={constraint:?}")
         };
         let gna = |_, bbr: BasicBlockRef<'_, '_>| {
-            let bbd = bbr.0.1;
+            let bbd = bbr.0 .1;
             let style = match bbd.is_dead() {
                 true => "dashed",
                 false => "solid",
             };
             let color = match &bbd.loop_member {
                 Ok(..) => "forestgreen",
-                Err(lm) if !lm.loop_exit.is_empty() => if bbd.back_edge_to().is_some() {
-                    "purple"
-                } else {
-                    "blue"
-                },
+                Err(lm) if !lm.loop_exit.is_empty() => {
+                    if bbd.back_edge_to().is_some() {
+                        "purple"
+                    } else {
+                        "blue"
+                    }
+                }
                 Err(..) if bbd.back_edge_to().is_some() => "orange",
                 Err(..) => "black",
             };
             format!("shape=box color={color:?} style={style:?}")
         };
-        let dot = Dot::with_attr_getters(
-            &graph,
-            &[Config::EdgeNoLabel],
-            &gea,
-            &gna,
-        );
+        let dot = Dot::with_attr_getters(&graph, &[Config::EdgeNoLabel], &gea, &gna);
         write!(f, "{dot:?}")
     }
 }
 
-impl<'a> BasicBlockData<'a> {
+impl BasicBlockData<'_> {
     fn edges_iter(&self) -> EdgesIter<'_> {
         if self.dead_branch == Err(false) {
             EdgesIter::FalseFirst(self.edges().iter().rev())
@@ -165,7 +146,14 @@ impl<'a> Data for &CfgData<'a, '_> {
 
 impl<'r, 'a> IntoNodeReferences for &'r CfgData<'a, '_> {
     type NodeRef = BasicBlockRef<'r, 'a>;
-    type NodeReferences = core::iter::Map<typed_index_collections::TiEnumerated<core::slice::Iter<'r, BasicBlockData<'a>>, BasicBlock, &'r BasicBlockData<'a>>, fn((BasicBlock, &'r BasicBlockData<'a>)) -> BasicBlockRef<'r, 'a>>;
+    type NodeReferences = core::iter::Map<
+        typed_index_collections::TiEnumerated<
+            core::slice::Iter<'r, BasicBlockData<'a>>,
+            BasicBlock,
+            &'r BasicBlockData<'a>,
+        >,
+        fn((BasicBlock, &'r BasicBlockData<'a>)) -> BasicBlockRef<'r, 'a>,
+    >;
 
     fn node_references(self) -> Self::NodeReferences {
         self.blocks.iter_enumerated().map(BasicBlockRef)
@@ -175,22 +163,30 @@ impl<'r, 'a> IntoNodeReferences for &'r CfgData<'a, '_> {
 #[derive(Clone, Copy)]
 pub struct BasicBlockRef<'r, 'a>((BasicBlock, &'r BasicBlockData<'a>));
 
-impl<'r, 'a> NodeRef for BasicBlockRef<'r, 'a> {
+impl<'a> NodeRef for BasicBlockRef<'_, 'a> {
     type NodeId = BasicBlock;
     type Weight = BasicBlockData<'a>;
 
     fn id(&self) -> Self::NodeId {
-        self.0.0
+        self.0 .0
     }
 
     fn weight(&self) -> &Self::Weight {
-        self.0.1
+        self.0 .1
     }
 }
 
 impl<'r, 'a> IntoEdgeReferences for &'r CfgData<'a, '_> {
     type EdgeRef = BasicBlockEdgeRef;
-    type EdgeReferences = core::iter::FlatMap<typed_index_collections::TiEnumerated<core::slice::Iter<'r, BasicBlockData<'a>>, BasicBlock, &'r BasicBlockData<'a>>, EdgeRefs<'r>, fn((BasicBlock, &'r BasicBlockData<'a>)) -> EdgeRefs<'r>>;
+    type EdgeReferences = core::iter::FlatMap<
+        typed_index_collections::TiEnumerated<
+            core::slice::Iter<'r, BasicBlockData<'a>>,
+            BasicBlock,
+            &'r BasicBlockData<'a>,
+        >,
+        EdgeRefs<'r>,
+        fn((BasicBlock, &'r BasicBlockData<'a>)) -> EdgeRefs<'r>,
+    >;
 
     fn edge_references(self) -> Self::EdgeReferences {
         fn edges<'r>((i, b): (BasicBlock, &'r BasicBlockData)) -> EdgeRefs<'r> {
@@ -260,7 +256,7 @@ impl Visitable for &CfgData<'_, '_> {
     fn visit_map(&self) -> Self::Map {
         self.blocks.iter().map(|_| false).collect()
     }
-    fn reset_map(self: &Self, map: &mut Self::Map) {
+    fn reset_map(&self, map: &mut Self::Map) {
         map.fill(false);
     }
 }
@@ -274,7 +270,11 @@ impl<'r> IntoNeighbors for &'r CfgData<'_, '_> {
 
 impl<'r> IntoNeighborsDirected for &'r CfgData<'_, '_> {
     type NeighborsDirected = EdgesIter<'r>;
-    fn neighbors_directed(self, a: BasicBlock, dir: petgraph::Direction) -> Self::NeighborsDirected {
+    fn neighbors_directed(
+        self,
+        a: BasicBlock,
+        dir: petgraph::Direction,
+    ) -> Self::NeighborsDirected {
         match dir {
             petgraph::Direction::Incoming => EdgesIter::TrueFirst(self[a].predecessors.iter()),
             petgraph::Direction::Outgoing => self.neighbors(a),

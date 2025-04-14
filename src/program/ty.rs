@@ -1,6 +1,6 @@
 use core::{fmt, ops::Deref};
 
-use super::{DefId, Interned, Interner, Symbol};
+use super::{DefId, Interned, Interner};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Types<'tcx> {
@@ -28,7 +28,7 @@ pub struct Ty<'tcx>(pub(crate) Interned<'tcx, TyKind<'tcx>>);
 
 impl<'tcx> Ty<'tcx> {
     pub fn kind(self) -> &'tcx TyKind<'tcx> {
-        self.0.0
+        self.0 .0
     }
 }
 
@@ -63,19 +63,6 @@ pub enum TyKind<'tcx> {
     Compound(CompoundId),
     Heap,
 }
-
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub enum ResourceKind<'tcx> {
-//     Field(Ty<'tcx>),
-//     Compound(CompoundId),
-//     Body,
-// }
-
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-// pub struct ResourceId<'tcx> {
-//     /// That 
-//     pub deref: Result<Ty<'tcx>, DefId>,
-// }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CompoundId {
@@ -129,14 +116,10 @@ impl fmt::Debug for Ty<'_> {
             TyKind::Int => write!(f, "int"),
             TyKind::Real => write!(f, "real"),
             TyKind::Ref => write!(f, "ref"),
-            TyKind::Domain(symbol, ty_list) =>
-                write!(f, "{symbol:?}{ty_list:?}"),
-            TyKind::ResourceId(ty) =>
-                write!(f, "&{ty:?}"),
-            TyKind::Compound(compound_id) =>
-                write!(f, "{compound_id:?}"),
-            TyKind::Heap =>
-                write!(f, "heap"),
+            TyKind::Domain(symbol, ty_list) => write!(f, "{symbol:?}{ty_list:?}"),
+            TyKind::ResourceId(ty) => write!(f, "&{ty:?}"),
+            TyKind::Compound(compound_id) => write!(f, "{compound_id:?}"),
+            TyKind::Heap => write!(f, "heap"),
         }
     }
 }

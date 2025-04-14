@@ -2,7 +2,7 @@ use core::fmt;
 
 use crate::parse::{ConstHeapKind, ConstKind};
 
-use super::{LocalDefId, Interned, TyCtxt};
+use super::{Interned, LocalDefId, TyCtxt};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DefId {
@@ -129,7 +129,7 @@ impl fmt::Debug for Const<'_> {
 
 impl fmt::Display for ConstKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use num::{Zero, One};
+        use num::{One, Zero};
         match self {
             ConstKind::Bool(b) => write!(f, "{b}"),
             ConstKind::Int(i) => write!(f, "{i}"),

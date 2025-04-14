@@ -1,8 +1,16 @@
 use core::{fmt, hash};
 
-use crate::{parse::{BinOp, HeapUpdateOp, QuantifierKind, UnOp}, program::{Const, DefId, Ty, TyList}, TiVec};
+use crate::{
+    parse::{BinOp, HeapUpdateOp, QuantifierKind, UnOp},
+    program::{Const, DefId, Ty, TyList},
+    TiVec,
+};
 
-use super::{body::{Operand, OperandKind}, idx::*, newline};
+use super::{
+    body::{Operand, OperandKind},
+    idx::*,
+    newline,
+};
 
 #[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct Exp<'tcx> {
@@ -50,7 +58,7 @@ pub enum ExpOperandKind<'tcx> {
     /// A function/method argument/result or a local variable
     Local(Local),
     /// A quantified variable
-    QuantLocal(u16, QuantLocal)
+    QuantLocal(u16, QuantLocal),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -67,14 +75,21 @@ impl<'tcx> Exp<'tcx> {
 
     pub fn new_simple(ty: Ty<'tcx>, kind: ExpLineKind<'tcx>) -> Self {
         let mut self_ = Self::default();
-        let line = ExpLine { ty, cond: Some(Default::default()), kind };
+        let line = ExpLine {
+            ty,
+            cond: Some(Default::default()),
+            kind,
+        };
         self_.lines.push(line);
         self_
     }
 
     pub fn result(&self) -> ExpOperand<'tcx> {
         let (l, line) = self.lines.last_key_value().unwrap();
-        ExpOperand { ty: line.ty, kind: ExpOperandKind::ExpLocal(0, l) }
+        ExpOperand {
+            ty: line.ty,
+            kind: ExpOperandKind::ExpLocal(0, l),
+        }
     }
 
     pub fn result_ty(&self) -> Ty<'tcx> {
@@ -105,7 +120,7 @@ impl<'tcx> Exp<'tcx> {
     }
 }
 
-impl<'tcx> ExpLine<'tcx> {
+impl ExpLine<'_> {
     pub fn is_conditionless(&self) -> bool {
         self.cond.as_ref().is_some_and(|c| c.is_empty())
     }
@@ -126,8 +141,7 @@ impl<'tcx> ExpLineKind<'tcx> {
             Heap(_, nds) => nds,
             HeapUpdate(_, nds) => nds,
             Quantifier(..) => &[],
-            Use(op) | UnOp(_, op) =>
-                core::slice::from_ref(op),
+            Use(op) | UnOp(_, op) => core::slice::from_ref(op),
             BinOp(_, nds) => nds,
             Ternary(nds) => nds,
         }
@@ -167,16 +181,13 @@ impl<'a, 'tcx> Iterator for ExpLineWalker<'a, 'tcx> {
             break next;
         };
 
-        match &next.kind {
-            ExpLineKind::Quantifier(_, _, triggers, exp) => {
-                for trigger in triggers {
-                    for subtrigger in trigger {
-                        self.add_exp(subtrigger);
-                    }
+        if let ExpLineKind::Quantifier(_, _, triggers, exp) = &next.kind {
+            for trigger in triggers {
+                for subtrigger in trigger {
+                    self.add_exp(subtrigger);
                 }
-                self.add_exp(exp);
             }
-            _ => (),
+            self.add_exp(exp);
         }
         Some(next)
     }

@@ -17,14 +17,18 @@ impl<'tcx> Globals<'tcx> {
         assert_eq!(self.data.len(), 0);
         self.data.reserve_exact(program.len());
         for (id, decl) in program.iter() {
-            let id = LocalDefId::from(id);
             let data = self.calculate_kind(interner, id, decl);
             let new = self.data.push_and_get_key(data);
             assert_eq!(new, id);
         }
     }
 
-    fn calculate_kind(&mut self, interner: &Interner<'tcx>, id: LocalDefId, decl: &Declaration) -> MemberData<'tcx> {
+    fn calculate_kind(
+        &mut self,
+        interner: &Interner<'tcx>,
+        id: LocalDefId,
+        decl: &Declaration,
+    ) -> MemberData<'tcx> {
         let name = decl.idn_decl().map(|d| interner.mk_symbol(&d.0));
         if let Some(name) = name {
             let old = self.resolved.insert(name, id);
@@ -33,22 +37,34 @@ impl<'tcx> Globals<'tcx> {
         use Declaration::*;
         let mut domain = None;
         let mut resolve_domain = |d| domain = Some(self.resolved[&interner.mk_symbol(d)].into());
-        let mut sig = decl.signature().map(|sig|
-            DeclSig { name: name.unwrap(), args: Some(sig.args.len()), rets: sig.ret.len() }
-        );
+        let mut sig = decl.signature().map(|sig| DeclSig {
+            name: name.unwrap(),
+            args: Some(sig.args.len()),
+            rets: sig.ret.len(),
+        });
         let kind = match decl {
             Import(..) => MemberKind::Import,
             Define(..) => MemberKind::Define,
             Domain(domain) => {
                 let name = interner.mk_symbol(&domain.name.0);
-                sig = Some(DeclSig { name, args: Some(domain.params.len()), rets: 1 });
+                sig = Some(DeclSig {
+                    name,
+                    args: Some(domain.params.len()),
+                    rets: 1,
+                });
                 MemberKind::Domain
             }
-            DomainElement(crate::parse::DomainElement { domain, kind: DomainElementKind::Axiom(..) }) => {
+            DomainElement(crate::parse::DomainElement {
+                domain,
+                kind: DomainElementKind::Axiom(..),
+            }) => {
                 resolve_domain(domain);
                 MemberKind::DomainAxiom
             }
-            DomainElement(crate::parse::DomainElement { domain, kind: DomainElementKind::Function(..) }) => {
+            DomainElement(crate::parse::DomainElement {
+                domain,
+                kind: DomainElementKind::Function(..),
+            }) => {
                 resolve_domain(domain);
                 MemberKind::DomainFunction
             }
@@ -122,7 +138,10 @@ impl<'tcx> FnSig<'tcx> {
     }
 
     pub fn returns(&self) -> (&[ArgRef<'tcx>], &'tcx [Ty<'tcx>]) {
-        if let Some(MethodData { ret_ref, returns, .. }) = &self.returns {
+        if let Some(MethodData {
+            ret_ref, returns, ..
+        }) = &self.returns
+        {
             (ret_ref, returns.as_slice())
         } else {
             let arg_ref = self.arg_ref.as_slice();
@@ -136,7 +155,9 @@ impl<'tcx> FnSig<'tcx> {
         Self::trim_params(self.returns())
     }
 
-    fn trim_params<'a>((mut param_ref, mut params): (&'a [ArgRef<'tcx>], &'tcx [Ty<'tcx>])) -> (&'a [ArgRef<'tcx>], &'tcx [Ty<'tcx>]) {
+    fn trim_params<'a>(
+        (mut param_ref, mut params): (&'a [ArgRef<'tcx>], &'tcx [Ty<'tcx>]),
+    ) -> (&'a [ArgRef<'tcx>], &'tcx [Ty<'tcx>]) {
         assert_eq!(param_ref.len(), params.len());
         while let Some((ArgRef::Heap(..), pr)) = param_ref.split_last() {
             param_ref = pr;
@@ -161,7 +182,6 @@ impl<'tcx> TyCtxt<'tcx> {
         assert_eq!(self.globals.sigs.len(), 0);
         self.globals.sigs.reserve_exact(program.len());
         for (id, decl) in program.iter() {
-            let id = LocalDefId::from(id);
             let sig = self.calculate_fn_sig(id, decl);
             let new = self.globals.sigs.push_and_get_key(sig);
             assert_eq!(new, id);
@@ -177,7 +197,10 @@ impl<'tcx> TyCtxt<'tcx> {
             ArgOrType::Type(..) => ArgRef::Unnamed,
         };
         let mk_compound = |contract| {
-            let compound = CompoundId { did: id.into(), contract };
+            let compound = CompoundId {
+                did: id.into(),
+                contract,
+            };
             let ret = TyKind::Compound(compound);
             self.interner.mk_ty_from_kind(ret)
         };
@@ -195,7 +218,10 @@ impl<'tcx> TyCtxt<'tcx> {
                 let earg = heap_dependent.then(|| mk_compound(Some(false)));
                 (earg, Ok(intern_arg(&sig.ret[0])))
             }
-            DomainElement(crate::parse::DomainElement { kind: DomainElementKind::Function(..), .. }) => {
+            DomainElement(crate::parse::DomainElement {
+                kind: DomainElementKind::Function(..),
+                ..
+            }) => {
                 assert_eq!(sig.ret.len(), 1);
                 (None, Ok(intern_arg(&sig.ret[0])))
             }
@@ -210,8 +236,18 @@ impl<'tcx> TyCtxt<'tcx> {
                 (None, Ok(mk_resource_id(ret)))
             }
             Method(m) => {
-                let ret_ref: Vec<_> = sig.ret.iter().map(arg_ref).chain([ArgRef::Heap(Some(true))]).collect();
-                let ret = sig.ret.iter().map(&intern_arg).chain([mk_compound(Some(true))]).collect();
+                let ret_ref: Vec<_> = sig
+                    .ret
+                    .iter()
+                    .map(arg_ref)
+                    .chain([ArgRef::Heap(Some(true))])
+                    .collect();
+                let ret = sig
+                    .ret
+                    .iter()
+                    .map(&intern_arg)
+                    .chain([mk_compound(Some(true))])
+                    .collect();
                 let returns = self.interner.mk_ty_list(ret);
                 let data = self.calculate_method_data(id, m, ret_ref, returns);
                 // TODO: this should be a `Heap` type arg?
@@ -227,7 +263,13 @@ impl<'tcx> TyCtxt<'tcx> {
         let arg_ref = arg_ref.chain(heap_arg.map(|_| ArgRef::Heap(Some(false))));
         let arg_ref: Vec<_> = arg_ref.chain(ret_ok.map(|_| ArgRef::Result)).collect();
 
-        let args = sig.args.iter().map(&intern_arg).chain(heap_arg).chain(ret_ok).collect();
+        let args = sig
+            .args
+            .iter()
+            .map(&intern_arg)
+            .chain(heap_arg)
+            .chain(ret_ok)
+            .collect();
         let args = self.interner.mk_ty_list(args);
         assert_eq!(arg_ref.len(), args.len());
 
@@ -239,11 +281,14 @@ impl<'tcx> TyCtxt<'tcx> {
         })
     }
 
-    fn calculate_method_data(&self, _id: LocalDefId, _method: &Method, ret_ref: Vec<ArgRef<'tcx>>, returns: TyList<'tcx>) -> MethodData<'tcx> {
+    fn calculate_method_data(
+        &self,
+        _id: LocalDefId,
+        _method: &Method,
+        ret_ref: Vec<ArgRef<'tcx>>,
+        returns: TyList<'tcx>,
+    ) -> MethodData<'tcx> {
         assert_eq!(returns.len(), ret_ref.len());
-        MethodData {
-            ret_ref,
-            returns,
-        }
+        MethodData { ret_ref, returns }
     }
 }

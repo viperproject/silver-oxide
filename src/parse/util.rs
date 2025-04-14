@@ -5,12 +5,24 @@ impl Program {
         self.0.len()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (crate::program::LocalDefId, &Declaration)> {
-        self.0.iter().enumerate().map(|(id, decl)| (id.into(), decl))
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (crate::program::LocalDefId, &mut Declaration)> {
-        self.0.iter_mut().enumerate().map(|(id, decl)| (id.into(), decl))
+    pub fn iter(&self) -> impl Iterator<Item = (crate::program::LocalDefId, &Declaration)> {
+        self.0
+            .iter()
+            .enumerate()
+            .map(|(id, decl)| (id.into(), decl))
+    }
+
+    pub fn iter_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (crate::program::LocalDefId, &mut Declaration)> {
+        self.0
+            .iter_mut()
+            .enumerate()
+            .map(|(id, decl)| (id.into(), decl))
     }
 }
 
@@ -81,7 +93,11 @@ impl From<Vec<PrePostDec>> for Contract {
             }
         }
         let postcondition = HeapExp::new(ExpKind::bool(true));
-        Self { precondition: HeapExp::new(precondition), postcondition, decreases }
+        Self {
+            precondition: HeapExp::new(precondition),
+            postcondition,
+            decreases,
+        }
     }
 }
 
@@ -89,10 +105,12 @@ impl Contract {
     pub(super) fn add_posts(mut self, posts: Vec<PrePostDec>) -> Self {
         for p in posts {
             match p {
-                PrePostDec::Post(e) => *self.postcondition.exp = match *self.postcondition.exp {
-                    ExpKind::Const(ConstKind::Bool(true)) => *e,
-                    post => ExpKind::BinOp(BinOp::And, Box::new(post), e),
-                },
+                PrePostDec::Post(e) => {
+                    *self.postcondition.exp = match *self.postcondition.exp {
+                        ExpKind::Const(ConstKind::Bool(true)) => *e,
+                        post => ExpKind::BinOp(BinOp::And, Box::new(post), e),
+                    }
+                }
                 PrePostDec::Decreases(d) => self.decreases.push(d),
                 _ => {}
             }

@@ -14,10 +14,7 @@ pub fn full(input: &str) -> Result<Silver, SilverError> {
 
     let tcx = TyCtxt::new(&mut program)?;
 
-    Ok(Silver {
-        program,
-        tcx,
-    })
+    Ok(Silver { program, tcx })
 }
 
 type PegErr = peg::error::ParseError<<str as peg::Parse>::PositionRepr>;

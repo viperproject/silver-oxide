@@ -85,6 +85,10 @@ impl ExpKind {
 
 impl Signature {
     pub fn field(f: IdnDeclTyped) -> Self {
-        Self { name: f.idn, args: vec![ArgOrType::Type(Type::Ref)], ret: vec![ArgOrType::Type(f.ty)] }
+        Self {
+            name: f.idn,
+            args: vec![ArgOrType::Type(Type::Ref)],
+            ret: vec![ArgOrType::Type(f.ty)],
+        }
     }
 }

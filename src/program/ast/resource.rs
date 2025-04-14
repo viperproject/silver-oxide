@@ -1,8 +1,15 @@
 use core::fmt;
 
-use crate::{program::{Ty, TyWalker}, TiVec};
+use crate::{
+    program::{Ty, TyWalker},
+    TiVec,
+};
 
-use super::{exp::{Exp, ExpCond, ExpLine, ExpLineWalker, ExpOperand}, idx::*, newline};
+use super::{
+    exp::{Exp, ExpCond, ExpLineWalker, ExpOperand},
+    idx::*,
+    newline,
+};
 
 #[derive(Default, Clone)]
 pub struct ResourceExp<'tcx> {
@@ -13,7 +20,10 @@ pub struct ResourceExp<'tcx> {
 
 impl<'tcx> ResourceExp<'tcx> {
     pub fn pure(pure: Exp<'tcx>) -> Self {
-        Self { pure, ..Default::default() }
+        Self {
+            pure,
+            ..Default::default()
+        }
     }
 
     pub fn walk<'a>(&'a self) -> ExpLineWalker<'a, 'tcx> {

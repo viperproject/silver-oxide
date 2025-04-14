@@ -1,6 +1,9 @@
-use crate::{parse::*, program::{LocalDefId, TyCtxt}};
+use crate::{
+    parse::*,
+    program::{LocalDefId, TyCtxt},
+};
 
-impl<'tcx> TyCtxt<'tcx> {
+impl TyCtxt<'_> {
     pub(crate) fn desugar_program(&self, program: &mut Program) {
         for (id, decl) in program.iter_mut() {
             Desugar::desugar_decl(self, id, decl);
@@ -58,7 +61,10 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
 impl<'a> AstWalkerMut<'a> for Desugar<'_, '_> {
     fn walk_mut_function(&mut self, ast: &'a mut Function) {
         ast.walk_mut_children(self);
-        assert!(ast.contract.postcondition.res.is_empty(), "function postcondition not pure")
+        assert!(
+            ast.contract.postcondition.res.is_empty(),
+            "function postcondition not pure"
+        )
     }
 
     fn walk_mut_heap_exp(&mut self, ast: &'a mut HeapExp) {
@@ -77,7 +83,7 @@ impl<'a> AstWalkerMut<'a> for Desugar<'_, '_> {
                 idx += 1;
                 continue;
             };
-            let range = if keep { idx+1..idx+1 } else { idx..idx+1 };
+            let range = if keep { idx + 1..idx + 1 } else { idx..idx + 1 };
             ast.0.splice(range, replace);
         }
         ast.walk_mut_children(self);
@@ -128,8 +134,12 @@ impl<'a> AstWalkerMut<'a> for Desugar<'_, '_> {
     }
 }
 
-impl<'r, 'tcx> Desugar<'r, 'tcx> {
-    fn walk_mut_exp_inner(&mut self, mut impure: Option<ImpureCollector<'r>>, ast: &mut Exp) -> Option<ImpureCollector<'r>> {
+impl<'r> Desugar<'r, '_> {
+    fn walk_mut_exp_inner(
+        &mut self,
+        mut impure: Option<ImpureCollector<'r>>,
+        ast: &mut Exp,
+    ) -> Option<ImpureCollector<'r>> {
         match &mut **ast {
             ExpKind::Field(..) => {
                 let loc = Self::take(ast);
@@ -141,11 +151,8 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
                     assert!(!self.mk_wildcard);
                     let loc = Self::take(&mut acc.acc.loc);
                     let perm = Self::take(&mut acc.perm);
-                    let new = ExpKind::BinOp(
-                        BinOp::Ge,
-                        Box::new(ExpKind::UnOp(UnOp::Perm, loc)),
-                        perm,
-                    );
+                    let new =
+                        ExpKind::BinOp(BinOp::Ge, Box::new(ExpKind::UnOp(UnOp::Perm, loc)), perm);
                     self.replace_exp(ast, new);
                     return impure;
                 }
@@ -181,7 +188,7 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
             ExpKind::UnOp(UnOp::Perm | UnOp::Deref, e) => {
                 self.walk_mut_loc(e);
                 return impure;
-            },
+            }
             ExpKind::BinOp(op, lhs, rhs) => match *op {
                 BinOp::And if impure.is_some() => {
                     self.impure = impure;
@@ -226,7 +233,7 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
                     return impure;
                 }
                 _ => (),
-            }
+            },
             ExpKind::Ternary(c, t, e) if impure.is_some() => {
                 c.walk_mut(self);
                 let impure = impure.unwrap().with_cond(self, c, t, e);
@@ -260,11 +267,17 @@ impl<'r, 'tcx> Desugar<'r, 'tcx> {
         exp.walk_mut_children(self);
     }
 
-    fn walk_mut_stmt(&mut self, ast: &mut Statement) -> Option<(bool, impl Iterator<Item = Statement> + '_)> {
+    fn walk_mut_stmt(
+        &mut self,
+        ast: &mut Statement,
+    ) -> Option<(bool, impl Iterator<Item = Statement> + '_)> {
         match ast {
             Statement::Var(new, init) => {
                 let init = init.take()?;
-                let tgts: Vec<_> = new.iter().map(|n| Box::new(ExpKind::Ident(n.idn.0.clone()))).collect();
+                let tgts: Vec<_> = new
+                    .iter()
+                    .map(|n| Box::new(ExpKind::Ident(n.idn.0.clone())))
+                    .collect();
                 Some((true, [Statement::Assign(tgts, init)].into_iter()))
             }
             // Statement::Assign(tgts, e) => {
@@ -308,7 +321,10 @@ struct ImpureCollector<'r> {
 
 impl<'r> ImpureCollector<'r> {
     fn push(&mut self, mut acc: AccExp, mk_wildcard: bool) {
-        let mut cond: Vec<_> = self.pc.iter().copied()
+        let mut cond: Vec<_> = self
+            .pc
+            .iter()
+            .copied()
             .map(|(neg, c)| (neg, c.clone()))
             .collect();
         if mk_wildcard {
@@ -326,9 +342,7 @@ impl<'r> ImpureCollector<'r> {
         t: &mut Exp,
         e: &mut Exp,
     ) -> Self {
-        let c = unsafe {
-            &*(c as *const _)
-        };
+        let c = unsafe { &*(c as *const _) };
         let expect_len = self.pc.len();
         self.pc.push((false, c));
 

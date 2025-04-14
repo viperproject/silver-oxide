@@ -1,27 +1,53 @@
 use crate::{HashMap, HashSet, TiVec};
 
-use crate::{parse::{AccExp, BinOp, ConstHeapKind, ConstKind, ExpKind, HeapUpdateOp, UnOp}, program::{exp::*, *}};
+use crate::{
+    parse::{AccExp, BinOp, ConstHeapKind, ConstKind, ExpKind, HeapUpdateOp, UnOp},
+    program::{exp::*, *},
+};
 
 use super::TranslationCtxt;
 
 impl<'b, 'tcx> TranslationCtxt<'b, 'tcx> {
-    pub(crate) fn translate_exp(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>, have_heap: bool) -> Exp<'tcx> {
+    pub(crate) fn translate_exp(
+        &self,
+        exp: &crate::parse::Exp,
+        ty: Ty<'tcx>,
+        have_heap: bool,
+    ) -> Exp<'tcx> {
         let heap = have_heap.then(|| {
-            ExpOperandKind::Const(self.tcx.interner.mk_const(ConstKind::Heap(ConstHeapKind::Old)))
+            ExpOperandKind::Const(
+                self.tcx
+                    .interner
+                    .mk_const(ConstKind::Heap(ConstHeapKind::Old)),
+            )
         });
         self.translate_exp_inner(exp, ty, heap)
     }
 
-    pub(super) fn translate_exp_inner(&self, exp: &crate::parse::Exp, ty: Ty<'tcx>, heap: Option<ExpOperandKind<'tcx>>) -> Exp<'tcx> {
+    pub(super) fn translate_exp_inner(
+        &self,
+        exp: &crate::parse::Exp,
+        ty: Ty<'tcx>,
+        heap: Option<ExpOperandKind<'tcx>>,
+    ) -> Exp<'tcx> {
         let mut et = self.prepare_translator(heap);
         let e = et.translate_full(exp, [ty]);
         let rt = e.result_ty();
-        assert!(ExpectedTys::tys_match(ty, rt), "type error: expected {ty:?}, found {rt:?}");
+        assert!(
+            ExpectedTys::tys_match(ty, rt),
+            "type error: expected {ty:?}, found {rt:?}"
+        );
         e
     }
 
-    pub(super) fn prepare_translator(&self, heap: Option<ExpOperandKind<'tcx>>) -> ExpTranslator<'_, 'b, 'tcx> {
-        let heap = heap.map(|h| ExpOperand { ty: self.tcx.types.heap_, kind: h });
+    pub(super) fn prepare_translator(
+        &self,
+        heap: Option<ExpOperandKind<'tcx>>,
+    ) -> ExpTranslator<'_, 'b, 'tcx> {
+        let heap = heap.map(|h| ExpOperand {
+            ty: self.tcx.types.heap_,
+            kind: h,
+        });
         ExpTranslator {
             tcx: self,
             e: Default::default(),
@@ -64,12 +90,23 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 return;
             }
         }
-        self.curr_cond.as_mut().unwrap().push(ExpCond { cond, neg: false });
+        self.curr_cond
+            .as_mut()
+            .unwrap()
+            .push(ExpCond { cond, neg: false });
     }
 
-    pub(super) fn translate_chain(&mut self, exp: &crate::parse::Exp, ty: Ty<'tcx>) -> ExpOperand<'tcx> {
+    pub(super) fn translate_chain(
+        &mut self,
+        exp: &crate::parse::Exp,
+        ty: Ty<'tcx>,
+    ) -> ExpOperand<'tcx> {
         let nd = self.translate(exp, [ty]);
-        assert!(ExpectedTys::tys_match(ty, nd.ty), "type error: expected {ty:?}, found {:?}", nd.ty);
+        assert!(
+            ExpectedTys::tys_match(ty, nd.ty),
+            "type error: expected {ty:?}, found {:?}",
+            nd.ty
+        );
         nd
     }
 
@@ -77,7 +114,11 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         (self.e, self.curr_cond.map(|cc| cc.into_boxed_slice()))
     }
 
-    fn translate_full(&mut self, exp: &crate::parse::Exp, tys: impl Into<ExpectedTys<'tcx>>) -> Exp<'tcx> {
+    fn translate_full(
+        &mut self,
+        exp: &crate::parse::Exp,
+        tys: impl Into<ExpectedTys<'tcx>>,
+    ) -> Exp<'tcx> {
         let e = core::mem::take(&mut self.e);
         let r = self.translate(exp, tys);
         match r.kind {
@@ -93,7 +134,11 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         core::mem::replace(&mut self.e, e)
     }
 
-    fn translate(&mut self, exp: &crate::parse::Exp, tys: impl Into<ExpectedTys<'tcx>>) -> ExpOperand<'tcx> {
+    fn translate(
+        &mut self,
+        exp: &crate::parse::Exp,
+        tys: impl Into<ExpectedTys<'tcx>>,
+    ) -> ExpOperand<'tcx> {
         let tys = tys.into();
         let line = match &**exp {
             ExpKind::Field(..) | ExpKind::Acc(..) => unreachable!(),
@@ -101,7 +146,10 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 let c = self.tcx.tcx.interner.mk_const_ref(c);
                 let ty = self.tcx.tcx.const_ty(c);
                 tys.check_ty(ty);
-                return ExpOperand { ty, kind: ExpOperandKind::Const(c) };
+                return ExpOperand {
+                    ty,
+                    kind: ExpOperandKind::Const(c),
+                };
             }
             ExpKind::Result => return self.mk_use(ArgRef::Result, tys),
             ExpKind::Old(ident, e) => {
@@ -109,12 +157,22 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 let ty = self.tcx.tcx.types.heap_;
                 let new = match ident {
                     None => {
-                        let new = self.tcx.tcx.interner.mk_const(ConstKind::Heap(ConstHeapKind::Old));
-                        ExpOperand { ty, kind: ExpOperandKind::Const(new) }
+                        let new = self
+                            .tcx
+                            .tcx
+                            .interner
+                            .mk_const(ConstKind::Heap(ConstHeapKind::Old));
+                        ExpOperand {
+                            ty,
+                            kind: ExpOperandKind::Const(new),
+                        }
                     }
                     Some(label) => {
                         let label = self.tcx.tcx.interner.mk_symbol(label);
-                        ExpOperand { ty, kind: ExpOperandKind::Local(self.tcx.params[&ArgRef::Label(label)]) }
+                        ExpOperand {
+                            ty,
+                            kind: ExpOperandKind::Local(self.tcx.params[&ArgRef::Label(label)]),
+                        }
                     }
                 };
                 assert_ne!(heap, new, "unnecessary old");
@@ -136,20 +194,32 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 return r;
             }
             ExpKind::Quantifier(kind, qvars, triggers, body) => {
-                let curr_cond = self.curr_cond.as_mut().map(|cc| core::mem::take(cc));
-                let (idns, tys): (Vec<_>, Vec<_>) = qvars.iter().map(|qv| {
-                    let idn = self.tcx.tcx.interner.mk_symbol(&qv.idn.0);
-                    let ty = self.tcx.tcx.translate_type(&qv.ty);
-                    (idn, ty)
-                }).unzip();
+                let curr_cond = self.curr_cond.as_mut().map(core::mem::take);
+                let (idns, tys): (Vec<_>, Vec<_>) = qvars
+                    .iter()
+                    .map(|qv| {
+                        let idn = self.tcx.tcx.interner.mk_symbol(&qv.idn.0);
+                        let ty = self.tcx.tcx.translate_type(&qv.ty);
+                        (idn, ty)
+                    })
+                    .unzip();
                 let tys = self.tcx.tcx.interner.mk_ty_list(tys);
                 for (i, (idn, ty)) in idns.iter().zip(tys.iter()).enumerate() {
                     let kind = ExpOperandKind::QuantLocal(self.curr_nest, QuantLocal::from(i));
                     let old = self.let_bound.insert(*idn, ExpOperand { ty: *ty, kind });
-                    assert!(old.is_none(), "duplicate variable name bound in quantifier {idn:?}");
+                    assert!(
+                        old.is_none(),
+                        "duplicate variable name bound in quantifier {idn:?}"
+                    );
                 }
-                let triggers = triggers.iter()
-                    .map(|t| t.exp.iter().map(|st| self.translate_nest(st, None)).collect())
+                let triggers = triggers
+                    .iter()
+                    .map(|t| {
+                        t.exp
+                            .iter()
+                            .map(|st| self.translate_nest(st, None))
+                            .collect()
+                    })
                     .collect();
 
                 let body = self.translate_nest(body, [self.tcx.tcx.types.bool_]);
@@ -159,7 +229,10 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 }
                 self.curr_cond = curr_cond;
 
-                self.mk_line(ExpLineKind::Quantifier(*kind, tys, triggers, body), self.tcx.tcx.types.bool_)
+                self.mk_line(
+                    ExpLineKind::Quantifier(*kind, tys, triggers, body),
+                    self.tcx.tcx.types.bool_,
+                )
             }
             ExpKind::LetIn(decl, val, e) => {
                 let decl = self.tcx.tcx.interner.mk_symbol(&decl.0);
@@ -181,7 +254,8 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
 
                 let caller_args = sig.caller_args().1;
                 assert_eq!(args.len(), caller_args.len());
-                let args = args.iter()
+                let args = args
+                    .iter()
                     .zip(caller_args)
                     .map(|(arg, ty)| self.translate(arg, [*ty]))
                     .chain(heap);
@@ -233,7 +307,13 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         ExpLine { ty, cond, kind }
     }
 
-    fn mk_ternary(&mut self, c: &crate::parse::Exp, t: &crate::parse::Exp, e: &crate::parse::Exp, tys: &ExpectedTys<'tcx>) -> Result<ExpLine<'tcx>, ExpOperand<'tcx>> {
+    fn mk_ternary(
+        &mut self,
+        c: &crate::parse::Exp,
+        t: &crate::parse::Exp,
+        e: &crate::parse::Exp,
+        tys: &ExpectedTys<'tcx>,
+    ) -> Result<ExpLine<'tcx>, ExpOperand<'tcx>> {
         let cond = self.translate(c, [self.tcx.tcx.types.bool_]);
         if let Some(c) = cond.as_const() {
             return Err(if c.as_bool().unwrap() {
@@ -261,7 +341,11 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
     }
 
     fn mk_heap_update(&mut self, op: HeapUpdateOp, acc: &AccExp) -> ExpOperand<'tcx> {
-        assert_eq!(op, HeapUpdateOp::Unfold, "other heap ops not yet implemented");
+        assert_eq!(
+            op,
+            HeapUpdateOp::Unfold,
+            "other heap ops not yet implemented"
+        );
         let heap = self.heap.expect("heap update without heap");
 
         let ty = self.tcx.any_resource_id();
@@ -272,7 +356,11 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         self.new_line(line)
     }
 
-    fn translate_nest(&mut self, exp: &crate::parse::Exp, tys: impl Into<ExpectedTys<'tcx>>) -> Exp<'tcx> {
+    fn translate_nest(
+        &mut self,
+        exp: &crate::parse::Exp,
+        tys: impl Into<ExpectedTys<'tcx>>,
+    ) -> Exp<'tcx> {
         self.curr_nest += 1;
         self.conditionless.push(TiVec::default());
         let e = self.translate_full(exp, tys);
@@ -289,7 +377,10 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
         let local = self.tcx.get_param(r);
         let ty = self.tcx.locals[local];
         tys.check_ty(ty);
-        ExpOperand { ty, kind: ExpOperandKind::Local(local) }
+        ExpOperand {
+            ty,
+            kind: ExpOperandKind::Local(local),
+        }
     }
 
     fn possible_bin_op(&self, op: BinOp) -> (bool, ExpectedTys<'tcx>, ExpectedTys<'tcx>) {
@@ -299,13 +390,22 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
             Implies | Or | And | Gt | Ge => unreachable!(),
             Iff => (false, [types.bool_].into(), [types.bool_].into()),
             Eq | Neq => (true, None.into(), None.into()),
-            Lt | Le | Plus | Minus | Mult | Div | Mod => (true, [types.int_, types.real_].into(), [types.int_, types.real_].into()),
+            Lt | Le | Plus | Minus | Mult | Div | Mod => (
+                true,
+                [types.int_, types.real_].into(),
+                [types.int_, types.real_].into(),
+            ),
             IntDiv => (false, [types.int_].into(), [types.int_].into()),
             _ => todo!(),
         }
     }
 
-    fn apply_bin_op(&mut self, op: BinOp, lhs: ExpOperand<'tcx>, rhs: ExpOperand<'tcx>) -> ExpLine<'tcx> {
+    fn apply_bin_op(
+        &mut self,
+        op: BinOp,
+        lhs: ExpOperand<'tcx>,
+        rhs: ExpOperand<'tcx>,
+    ) -> ExpLine<'tcx> {
         use BinOp::*;
         let types = &self.tcx.tcx.types;
         let ty = match op {
@@ -342,7 +442,7 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
                 let TyKind::ResourceId(ty) = *e.ty.kind() else {
                     unreachable!();
                 };
-                return self.mk_line(kind, ty)
+                return self.mk_line(kind, ty);
             }
             Perm => {
                 let heap = self.heap.expect("heap perm without heap");
@@ -363,12 +463,16 @@ impl<'tcx> ExpTranslator<'_, '_, 'tcx> {
             let ty = line.ty;
             // TODO: check for the same line evaluated with fewer conds
             let (l, prev_ty, _) = self.evaluated.entry(line).or_insert_with_key(|line| {
-                self.conditionless[self.curr_nest as usize].push(line.cond.as_ref().is_some_and(|c| c.is_empty()));
+                self.conditionless[self.curr_nest as usize]
+                    .push(line.cond.as_ref().is_some_and(|c| c.is_empty()));
                 let l = self.e.lines.push_and_get_key(line.clone());
                 (l, ty, self.curr_nest)
             });
             assert_eq!(*prev_ty, ty);
-            ExpOperand { ty, kind: ExpOperandKind::ExpLocal(self.curr_nest, *l) }
+            ExpOperand {
+                ty,
+                kind: ExpOperandKind::ExpLocal(self.curr_nest, *l),
+            }
         })
     }
 

@@ -1,6 +1,9 @@
 use core::fmt;
 
-use crate::{program::{ast::newline, Const, DefId, Ty, TyWalker}, TiVec};
+use crate::{
+    program::{ast::newline, Const, DefId, Ty, TyWalker},
+    TiVec,
+};
 
 use super::{exp::Exp, idx::*, resource::ResourceExp};
 
@@ -73,9 +76,10 @@ impl<'tcx> Operand<'tcx> {
 
 impl<'tcx> Body<'tcx> {
     pub fn walk<'a>(&'a self) -> StmtWalker<'a, 'tcx> {
-        let mut walker = StmtWalker::default();
-        walker.stack = self.blocks.iter();
-        walker
+        StmtWalker {
+            stack: self.blocks.iter(),
+            ..Default::default()
+        }
     }
 
     pub fn walk_locals(&self) -> TyWalker<'tcx> {

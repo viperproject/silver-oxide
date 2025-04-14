@@ -25,22 +25,38 @@ impl<'tcx> Std<'tcx> {
             DefId::SEQ_CONS => MemberData {
                 kind: MemberKind::DomainFunction,
                 domain: Some(DefId::SEQ_DOMAIN),
-                sig: Some(DeclSig { name: self.seq, args: None, rets: 1 }),
+                sig: Some(DeclSig {
+                    name: self.seq,
+                    args: None,
+                    rets: 1,
+                }),
             },
             DefId::SET_CONS => MemberData {
                 kind: MemberKind::DomainFunction,
                 domain: Some(DefId::SET_DOMAIN),
-                sig: Some(DeclSig { name: self.set, args: None, rets: 1 }),
+                sig: Some(DeclSig {
+                    name: self.set,
+                    args: None,
+                    rets: 1,
+                }),
             },
             DefId::MULTISET_CONS => MemberData {
                 kind: MemberKind::DomainFunction,
                 domain: Some(DefId::MULTISET_DOMAIN),
-                sig: Some(DeclSig { name: self.multiset, args: None, rets: 1 }),
+                sig: Some(DeclSig {
+                    name: self.multiset,
+                    args: None,
+                    rets: 1,
+                }),
             },
             DefId::MAP_CONS => MemberData {
                 kind: MemberKind::DomainFunction,
                 domain: Some(DefId::MAP_DOMAIN),
-                sig: Some(DeclSig { name: self.map, args: Some(0), rets: 1 }),
+                sig: Some(DeclSig {
+                    name: self.map,
+                    args: Some(0),
+                    rets: 1,
+                }),
             },
             _ => panic!("unexpected defid: {id:?}"),
         }

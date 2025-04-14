@@ -1,6 +1,10 @@
 use crate::{HashMap, HashSet};
 
-use crate::{parse::{AstWalkable, AstWalker, ExpKind, Statement, StmtBlock}, program::{ArgRef, Local, LocalDefId, Symbol, Ty, TyCtxt, TyKind}, TiVec};
+use crate::{
+    parse::{AstWalkable, AstWalker, ExpKind, Statement, StmtBlock},
+    program::{ArgRef, Local, LocalDefId, Symbol, Ty, TyCtxt, TyKind},
+    TiVec,
+};
 
 pub(crate) struct TranslationCtxt<'a, 'tcx> {
     pub(super) tcx: &'a TyCtxt<'tcx>,
@@ -13,7 +17,7 @@ pub(crate) struct TranslationCtxt<'a, 'tcx> {
     pub(super) goto_labels: HashSet<Symbol<'tcx>>,
 }
 
-impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
+impl<'tcx> TranslationCtxt<'_, 'tcx> {
     pub(super) fn get_param(&self, r: ArgRef<'tcx>) -> Local {
         *self.params.get(&r).expect("local not found")
     }
@@ -33,7 +37,11 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
             used_labels: Default::default(),
             goto_labels: Default::default(),
         };
-        assert_eq!(self_.params.len(), self_.locals.len(), "duplicate parameters in signature");
+        assert_eq!(
+            self_.params.len(),
+            self_.locals.len(),
+            "duplicate parameters in signature"
+        );
         self_
     }
 
@@ -43,7 +51,11 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
         let ret = arg_ref_to_stmt_local(ret, self.locals.len());
         self.params.extend(ret);
         self.locals.extend(tys.iter().copied());
-        assert_eq!(self.params.len(), self.locals.len(), "duplicate parameters in returns");
+        assert_eq!(
+            self.params.len(),
+            self.locals.len(),
+            "duplicate parameters in returns"
+        );
     }
 
     pub(crate) fn fn_result(&self) -> Ty<'tcx> {
@@ -51,15 +63,24 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
     }
 
     pub(super) fn add_body(&mut self, body: &StmtBlock) {
-        self.params.insert(ArgRef::Heap(None), self.locals.push_and_get_key(self.tcx.types.heap_));
+        self.params.insert(
+            ArgRef::Heap(None),
+            self.locals.push_and_get_key(self.tcx.types.heap_),
+        );
         self.walk_block(body);
         for label in self.used_labels.drain(..) {
-            assert!(self.defined_labels.contains(&label), "label `{label}` not defined");
+            assert!(
+                self.defined_labels.contains(&label),
+                "label `{label}` not defined"
+            );
             let heap = self.locals.push_and_get_key(self.tcx.types.heap_);
             let old = self.params.insert(ArgRef::Label(label), heap);
             assert!(old.is_none());
         }
-        assert!(self.goto_labels.is_subset(&self.defined_labels), "goto label not defined");
+        assert!(
+            self.goto_labels.is_subset(&self.defined_labels),
+            "goto label not defined"
+        );
     }
 
     pub(super) fn any_resource_id(&self) -> Ty<'tcx> {
@@ -68,8 +89,14 @@ impl<'a, 'tcx> TranslationCtxt<'a, 'tcx> {
     }
 }
 
-fn arg_ref_to_stmt_local<'a, 'tcx>(arg_ref: &'a [ArgRef<'tcx>], offset: usize) -> impl Iterator<Item = (ArgRef<'tcx>, Local)> + 'a {
-    arg_ref.iter().enumerate().map(move |(i, param)| (*param, Local::from(i + offset)))
+fn arg_ref_to_stmt_local<'a, 'tcx>(
+    arg_ref: &'a [ArgRef<'tcx>],
+    offset: usize,
+) -> impl Iterator<Item = (ArgRef<'tcx>, Local)> + 'a {
+    arg_ref
+        .iter()
+        .enumerate()
+        .map(move |(i, param)| (*param, Local::from(i + offset)))
 }
 
 impl<'a> AstWalker<'a> for TranslationCtxt<'_, '_> {
@@ -81,11 +108,12 @@ impl<'a> AstWalker<'a> for TranslationCtxt<'_, '_> {
                     let id = self.locals.push_and_get_key(ty);
                     let idn = self.tcx.interner.mk_symbol(&new.idn.0);
                     let old = self.params.insert(ArgRef::Ident(idn), id);
-                    assert!(old.is_none(), "duplicate var in body `{}`", new.idn.0.0);
+                    assert!(old.is_none(), "duplicate var in body `{}`", new.idn.0 .0);
                 }
             }
             Statement::Label(decl, _) => {
-                self.defined_labels.insert(self.tcx.interner.mk_symbol(&decl.0));
+                self.defined_labels
+                    .insert(self.tcx.interner.mk_symbol(&decl.0));
             }
             Statement::Goto(label) => {
                 self.goto_labels.insert(self.tcx.interner.mk_symbol(label));
@@ -96,11 +124,8 @@ impl<'a> AstWalker<'a> for TranslationCtxt<'_, '_> {
     }
 
     fn walk_exp_kind(&mut self, ast: &'a ExpKind) {
-        match ast {
-            ExpKind::Old(Some(label), ..) => {
-                self.used_labels.insert(self.tcx.interner.mk_symbol(label));
-            }
-            _ => (),
+        if let ExpKind::Old(Some(label), ..) = ast {
+            self.used_labels.insert(self.tcx.interner.mk_symbol(label));
         }
         ast.walk_children(self);
     }

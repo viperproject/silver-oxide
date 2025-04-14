@@ -8,7 +8,11 @@ use crate::parse::{ExpKind, Ident, Invariant};
 use crate::program::{CanDot, Loop};
 use crate::{HashMap, HashSet};
 
-use crate::{parse::{Statement, StmtBlock}, program::{BasicBlock, Symbol, TyCtxt}, TiVec};
+use crate::{
+    parse::{Statement, StmtBlock},
+    program::{BasicBlock, Symbol, TyCtxt},
+    TiVec,
+};
 
 pub struct Cfg<'a, 'tcx> {
     data: CfgData<'a, 'tcx>,
@@ -74,23 +78,23 @@ pub struct LoopMember {
     pub loop_exit: Vec<LoopHead>,
 }
 
-impl<'a> BasicBlockData<'a> {
+impl BasicBlockData<'_> {
     pub fn edges(&self) -> &[BasicBlock] {
         self.kind.edges()
     }
 
     pub fn member_of_loop(&self) -> Option<LoopHead> {
-        self.loop_member.as_ref().err().map_or(
-            Some(LoopHead(self.bb)),
-            |lm| lm.in_loop,
-        )
+        self.loop_member
+            .as_ref()
+            .err()
+            .map_or(Some(LoopHead(self.bb)), |lm| lm.in_loop)
     }
 
     pub fn loop_exit(&self) -> &[LoopHead] {
-        self.loop_member.as_ref().err().map_or(
-            &[],
-            |lm| lm.loop_exit.as_slice()
-        )
+        self.loop_member
+            .as_ref()
+            .err()
+            .map_or(&[], |lm| lm.loop_exit.as_slice())
     }
 
     pub fn as_loop_head(&self) -> Option<LoopHead> {
@@ -98,14 +102,13 @@ impl<'a> BasicBlockData<'a> {
     }
 
     pub fn back_edge_to(&self) -> Option<LoopHead> {
-        self.member_of_loop().filter(|lh| &[lh.bb()] == self.edges())
+        self.member_of_loop().filter(|lh| [lh.bb()] == self.edges())
     }
 
     pub(crate) fn member_of_loop_non_framing(&self) -> Option<LoopHead> {
-        self.loop_member.as_ref().map_or_else(
-            |lm| lm.in_loop,
-            |lh| lh.nested
-        )
+        self.loop_member
+            .as_ref()
+            .map_or_else(|lm| lm.in_loop, |lh| lh.nested)
     }
 
     pub fn is_dead(&self) -> bool {
@@ -114,10 +117,15 @@ impl<'a> BasicBlockData<'a> {
 }
 
 impl<'a, 'tcx> Cfg<'a, 'tcx> {
-    pub fn new(tcx: &TyCtxt<'tcx>, name: Symbol<'tcx>, labels: impl Iterator<Item = Symbol<'tcx>>, body: &'a StmtBlock) -> Self {
+    pub fn new(
+        tcx: &TyCtxt<'tcx>,
+        name: Symbol<'tcx>,
+        labels: impl Iterator<Item = Symbol<'tcx>>,
+        body: &'a StmtBlock,
+    ) -> Self {
         let mut data = CfgData::new(tcx, name, labels, body);
         let start = data.start();
-        
+
         // TODO: is this useful?
         let dominators = petgraph::algo::dominators::simple_fast(&data, start);
 
@@ -161,7 +169,8 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             }
             let from = &mut data.blocks[bb];
             from.pcs = pcs;
-            expect_alive = from.dead_branch.is_ok_and(|dead| !dead) || from.back_edge_to().is_some();
+            expect_alive =
+                from.dead_branch.is_ok_and(|dead| !dead) || from.back_edge_to().is_some();
             if matches!(from.kind, BasicBlockKind::Return) {
                 assert_eq!(preorder, postorder.len() - 1);
                 assert!(data.pcs(bb).is_none());
@@ -190,9 +199,14 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
         &self.loop_data[self.data.get_loop(lh)]
     }
 
-    fn initialise_loops(tcx: &TyCtxt<'tcx>, data: &mut CfgData, postorder: &[BasicBlock]) -> TiVec<Loop, LoopData<'tcx>> {
+    fn initialise_loops(
+        tcx: &TyCtxt<'tcx>,
+        data: &mut CfgData,
+        postorder: &[BasicBlock],
+    ) -> TiVec<Loop, LoopData<'tcx>> {
         let mut loop_data = TiVec::<Loop, LoopData<'tcx>>::new();
-        let mut loop_members = TiVec::<BasicBlock, HashSet<LoopHead>>::with_capacity(data.blocks.len());
+        let mut loop_members =
+            TiVec::<BasicBlock, HashSet<LoopHead>>::with_capacity(data.blocks.len());
         loop_members.resize(data.blocks.len(), HashSet::new());
 
         for &from_bb in postorder {
@@ -209,7 +223,10 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
                     // Have not visited yet
                     assert_eq!(to_loop_member.len(), 0);
                     let head = LoopHead(to_bb);
-                    data.blocks[to_bb].loop_member = Ok(LoopHeadData { loop_: Loop::MAX, nested: None });
+                    data.blocks[to_bb].loop_member = Ok(LoopHeadData {
+                        loop_: Loop::MAX,
+                        nested: None,
+                    });
                     loop_member.insert(head);
                 } else {
                     // Have visited already
@@ -231,16 +248,18 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
 
             let mut loop_exit = Vec::new();
             let to_lm = &loop_members[to];
-            let in_loop = in_loop.and_then(|lh|
-                data.member_of_loops(lh.bb()).find(|(_, l)| {
-                    if to_lm.contains(l) {
-                        true
-                    } else {
-                        loop_exit.push(*l);
-                        false
-                    }
+            let in_loop = in_loop
+                .and_then(|lh| {
+                    data.member_of_loops(lh.bb()).find(|(_, l)| {
+                        if to_lm.contains(l) {
+                            true
+                        } else {
+                            loop_exit.push(*l);
+                            false
+                        }
+                    })
                 })
-            ).map(|(_, l)| l);
+                .map(|(_, l)| l);
             if !loop_exit.is_empty() {
                 assert_eq!(data[to].predecessors.len(), 1);
             }
@@ -249,7 +268,10 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             match &mut to_bb.loop_member {
                 Ok(to_lh) => {
                     let head = LoopHead(to);
-                    let ld = LoopData { head, modifies: Default::default() };
+                    let ld = LoopData {
+                        head,
+                        modifies: Default::default(),
+                    };
                     let loop_ = loop_data.push_and_get_key(ld);
 
                     assert_eq!(loop_exit.len(), 0);
@@ -264,7 +286,9 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             if let Some(lh) = to_bb.member_of_loop() {
                 let loop_ = data.get_loop(lh);
                 let modifies = data[to].modifies();
-                loop_data[loop_].modifies.extend(modifies.map(|m| tcx.interner.mk_symbol(m)));
+                loop_data[loop_]
+                    .modifies
+                    .extend(modifies.map(|m| tcx.interner.mk_symbol(m)));
             }
         }
         for (loop_, other) in errors {
@@ -273,9 +297,9 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             match (lh_kind.loop_head().0, data[other].kind.loop_head().0) {
                 (None, None) => unreachable!(),
                 (Some(label), None) | (None, Some(label)) =>
-                    panic!("while loop has a forbidden second entry at label {label}, see {path:?}"),
+                    eprintln!("error: while loop has a forbidden second entry at label {label}, see {path:?}"),
                 (Some(l1), Some(l2)) =>
-                    panic!("label {l1} and {l2} are both entry points into the same loop, which is not allowed, see {path:?}"),
+                    eprintln!("error: label {l1} and {l2} are both entry points into the same loop, which is not allowed, see {path:?}"),
             }
         }
         for l in loop_data.keys().rev() {
@@ -288,16 +312,18 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             let nested = data.get_loop(nested);
             assert_ne!(l, nested);
             // Safety: the indices differ
-            let ld = unsafe {
-                &*(ld as *const LoopData<'tcx>)
-            };
+            let ld = unsafe { &*(ld as *const LoopData<'tcx>) };
             let nested = &mut loop_data[nested];
             nested.modifies.extend(ld.modifies.iter().copied());
         }
         loop_data
     }
 
-    fn select_innermost_loop(data: &CfgData, to: BasicBlock, errors: &mut Vec<(LoopHead, BasicBlock)>) -> Option<LoopHead> {
+    fn select_innermost_loop(
+        data: &CfgData,
+        to: BasicBlock,
+        errors: &mut Vec<(LoopHead, BasicBlock)>,
+    ) -> Option<LoopHead> {
         let preds = data[to].preorder_preds(data);
         let mut preds = preds.map(|pred| data[pred].member_of_loop());
 
@@ -310,7 +336,7 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
             }
             error = true;
             match (&mut in_loop, pred) {
-                (il@None, pred) => *il = pred,
+                (il @ None, pred) => *il = pred,
                 (_, None) => (),
                 (Some(il), Some(pred)) => {
                     let more_inner = data.member_of_loops(pred.bb()).any(|(_, l)| l == *il);
@@ -330,7 +356,12 @@ impl<'a, 'tcx> Cfg<'a, 'tcx> {
 }
 
 impl<'a, 'tcx> CfgData<'a, 'tcx> {
-    pub fn new(tcx: &TyCtxt<'tcx>, name: Symbol<'tcx>, labels: impl Iterator<Item = Symbol<'tcx>>, body: &'a StmtBlock) -> Self {
+    pub fn new(
+        tcx: &TyCtxt<'tcx>,
+        name: Symbol<'tcx>,
+        labels: impl Iterator<Item = Symbol<'tcx>>,
+        body: &'a StmtBlock,
+    ) -> Self {
         let mut self_ = CfgData {
             name,
             labels: Default::default(),
@@ -341,9 +372,10 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
     }
 
     pub fn pcs(&self, bb: BasicBlock) -> Option<impl Iterator<Item = (&[Branch], Branch)> + '_> {
-        self[bb].pcs.pcs().unwrap_or_else(|bb| {
-            self[bb].pcs.pcs().unwrap()
-        })
+        self[bb]
+            .pcs
+            .pcs()
+            .unwrap_or_else(|bb| self[bb].pcs.pcs().unwrap())
     }
 
     pub fn start(&self) -> BasicBlock {
@@ -365,16 +397,26 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
         })
     }
 
-    fn init(&mut self, tcx: &TyCtxt<'tcx>, labels: impl Iterator<Item = Symbol<'tcx>>, body: &'a StmtBlock) {
-        let return_ = self.push_and_get_key(|bb| BasicBlockData::return_(bb));
-        self.labels = labels.map(|l| {
-            (l, self.push_and_get_key(|bb| BasicBlockData::placeholder(bb)))
-        }).collect();
+    fn init(
+        &mut self,
+        tcx: &TyCtxt<'tcx>,
+        labels: impl Iterator<Item = Symbol<'tcx>>,
+        body: &'a StmtBlock,
+    ) {
+        let return_ = self.push_and_get_key(BasicBlockData::return_);
+        self.labels = labels
+            .map(|l| (l, self.push_and_get_key(BasicBlockData::placeholder)))
+            .collect();
         let start = self.walk_block(tcx, body, return_);
         assert_eq!(self.start(), start);
     }
 
-    fn walk_block(&mut self, tcx: &TyCtxt<'tcx>, block: &'a StmtBlock, mut succ: BasicBlock) -> BasicBlock {
+    fn walk_block(
+        &mut self,
+        tcx: &TyCtxt<'tcx>,
+        block: &'a StmtBlock,
+        mut succ: BasicBlock,
+    ) -> BasicBlock {
         let mut last = block.0.len();
         for i in (0..block.0.len()).rev() {
             let stmt = &block.0[i];
@@ -395,8 +437,10 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
                     last = i;
                 }
                 While(.., loop_) => {
-                    let post_loop = self.mk_block(&block.0[i+1..last], succ, None);
-                    succ = self.push_and_get_key(|bb| BasicBlockData::branch(bb, stmt, [BasicBlock::MAX, post_loop]));
+                    let post_loop = self.mk_block(&block.0[i + 1..last], succ, None);
+                    succ = self.push_and_get_key(|bb| {
+                        BasicBlockData::branch(bb, stmt, [BasicBlock::MAX, post_loop])
+                    });
                     last = i;
 
                     let loop_start = self.walk_block(tcx, loop_, succ);
@@ -406,16 +450,20 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
                     *ls = loop_start;
                 }
                 If(_, then, else_) => {
-                    let post_branch = self.mk_block(&block.0[i+1..last], succ, None);
-                    let else_ = else_.as_ref().map(|e| self.walk_block(tcx, e, post_branch)).unwrap_or(post_branch);
+                    let post_branch = self.mk_block(&block.0[i + 1..last], succ, None);
+                    let else_ = else_
+                        .as_ref()
+                        .map(|e| self.walk_block(tcx, e, post_branch))
+                        .unwrap_or(post_branch);
                     let then = self.walk_block(tcx, then, post_branch);
-                    succ = self.push_and_get_key(|bb| BasicBlockData::branch(bb, stmt, [then, else_]));
+                    succ =
+                        self.push_and_get_key(|bb| BasicBlockData::branch(bb, stmt, [then, else_]));
                     last = i;
                 }
                 // TODO: how should we handle this?
                 Package(..) => (),
                 Block(block) => {
-                    let post = self.mk_block(&block.0[i+1..last], succ, None);
+                    let post = self.mk_block(&block.0[i + 1..last], succ, None);
                     succ = self.walk_block(tcx, block, post);
                     last = i;
                 }
@@ -425,7 +473,12 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
         self.mk_block(&block.0[0..last], succ, None)
     }
 
-    fn mk_block(&mut self, block: &'a [Statement], succ: BasicBlock, replace: Option<BasicBlock>) -> BasicBlock {
+    fn mk_block(
+        &mut self,
+        block: &'a [Statement],
+        succ: BasicBlock,
+        replace: Option<BasicBlock>,
+    ) -> BasicBlock {
         match replace {
             Some(bb) => {
                 let BasicBlockKind::Block(b, s) = &mut self.blocks[bb].kind else {
@@ -439,12 +492,15 @@ impl<'a, 'tcx> CfgData<'a, 'tcx> {
         }
     }
 
-    fn push_and_get_key(&mut self, data: impl FnOnce(BasicBlock) -> BasicBlockData<'a>) -> BasicBlock {
+    fn push_and_get_key(
+        &mut self,
+        data: impl FnOnce(BasicBlock) -> BasicBlockData<'a>,
+    ) -> BasicBlock {
         let bb = self.blocks.next_key();
         self.blocks.push_and_get_key(data(bb));
         bb
     }
-    
+
     fn set_dead_branch(&mut self, bb: BasicBlock) {
         let from = &mut self.blocks[bb];
         let preorder = from.preorder;
@@ -484,8 +540,13 @@ impl<'a> Index<BasicBlock> for CfgData<'a, '_> {
 }
 
 impl<'a> BasicBlockData<'a> {
-    pub fn preorder_preds<'r>(&'r self, data: &'r CfgData) -> impl Iterator<Item = BasicBlock> + 'r {
-        self.predecessors.iter().copied()
+    pub fn preorder_preds<'r>(
+        &'r self,
+        data: &'r CfgData,
+    ) -> impl Iterator<Item = BasicBlock> + 'r {
+        self.predecessors
+            .iter()
+            .copied()
             .filter(|&bb| data[bb].preorder < self.preorder)
     }
 
@@ -535,11 +596,9 @@ impl<'a> BasicBlockData<'a> {
                 Statement::Assign(tgts, ..) => tgts.as_slice(),
                 _ => &[],
             };
-            tgts.iter().filter_map(|tgt| {
-                match &**tgt {
-                    ExpKind::Ident(tgt) => Some(tgt),
-                    _ => None,
-                }
+            tgts.iter().filter_map(|tgt| match &**tgt {
+                ExpKind::Ident(tgt) => Some(tgt),
+                _ => None,
             })
         })
     }
@@ -561,7 +620,7 @@ impl<'a> BasicBlockKind<'a> {
             BasicBlockKind::Branch(_, succ) => {
                 assert!(succ[0] == bb || succ[1] == bb, "{bb:?} vs {succ:?}");
                 Some(succ[0] == bb)
-            },
+            }
         }
     }
 
@@ -575,7 +634,9 @@ impl<'a> BasicBlockKind<'a> {
 
     pub fn loop_head(&self) -> (Option<&'a String>, &'a Invariant) {
         match self {
-            BasicBlockKind::Block([Statement::Label(label, inv), ..], ..) => (Some(&label.0.0), inv),
+            BasicBlockKind::Block([Statement::Label(label, inv), ..], ..) => {
+                (Some(&label.0 .0), inv)
+            }
             BasicBlockKind::Branch(Statement::While(_, inv, ..), _) => (None, inv),
             _ => unreachable!(),
         }
@@ -597,7 +658,9 @@ pub enum PathConditions {
 pub struct Branch(pub BasicBlock, pub bool);
 
 impl PathConditions {
-    pub fn pcs(&self) -> Result<Option<impl Iterator<Item = (&[Branch], Branch)> + '_>, BasicBlock> {
+    pub fn pcs(
+        &self,
+    ) -> Result<Option<impl Iterator<Item = (&[Branch], Branch)> + '_>, BasicBlock> {
         let pcs = match self {
             PathConditions::Or(pcs) => pcs,
             PathConditions::Ref(bb) => return Err(*bb),
@@ -606,7 +669,7 @@ impl PathConditions {
         Ok(has_values.then(|| pcs.iter().map(|(ks, v)| (ks.as_slice(), *v))))
     }
 
-    fn new<'a>(cfg: &CfgData, bb: BasicBlock) -> Self {
+    fn new(cfg: &CfgData, bb: BasicBlock) -> Self {
         let incoming = match Self::predecessors(cfg, bb) {
             Ok(incoming) => incoming,
             Err(bb) => {
@@ -657,7 +720,10 @@ impl PathConditions {
         }
     }
 
-    fn predecessors<'r>(cfg: &'r CfgData, curr: BasicBlock) -> Result<impl Iterator<Item = (BasicBlock, Option<bool>)> + 'r, BasicBlock> {
+    fn predecessors<'r>(
+        cfg: &'r CfgData,
+        curr: BasicBlock,
+    ) -> Result<impl Iterator<Item = (BasicBlock, Option<bool>)> + 'r, BasicBlock> {
         let curr_bb = &cfg[curr];
         let predecessors = curr_bb.preorder_preds(cfg);
         let mut pre = predecessors.map(move |pre| {
@@ -666,7 +732,10 @@ impl PathConditions {
             // We have already executed the dead branch by the time we're at
             // `curr` and have assumed `false` in that branch.
             let nd_branch = branch.filter(|&b| Err(!b) != bb.dead_branch);
-            assert!(branch == nd_branch || cfg[bb.kind.branch_bool(!branch.unwrap())].preorder < curr_bb.preorder);
+            assert!(
+                branch == nd_branch
+                    || cfg[bb.kind.branch_bool(!branch.unwrap())].preorder < curr_bb.preorder
+            );
             (pre, nd_branch, branch.is_some())
         });
         match (pre.next(), pre.next()) {
@@ -712,8 +781,8 @@ impl fmt::Debug for BasicBlockData<'_> {
             Return => write!(f, "🚪"),
             Block(block, ..) => {
                 write!(f, "📝  x{}", block.len())?;
-                if let Some(Statement::Label(label, ..)) = block.get(0) {
-                    write!(f, "\n🏷️  {}", label.0.0)?;
+                if let Some(Statement::Label(label, ..)) = block.first() {
+                    write!(f, "\n🏷️  {}", label.0 .0)?;
                 }
                 Ok(())
             }

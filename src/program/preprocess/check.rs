@@ -5,9 +5,13 @@ pub struct ResolveError {
     pub unresolved: Ident,
 }
 
-impl<'tcx> TyCtxt<'tcx> {
+impl TyCtxt<'_> {
     pub(crate) fn resolve_calls(&self, program: &Program) -> Result<(), Vec<ResolveError>> {
-        let mut cr = CallResolver { tcx: self, errors: Vec::new(), did: LocalDefId::MAX };
+        let mut cr = CallResolver {
+            tcx: self,
+            errors: Vec::new(),
+            did: LocalDefId::MAX,
+        };
         cr.walk_program(program);
         cr.errors.is_empty().then_some(()).ok_or(cr.errors)
     }
@@ -25,18 +29,23 @@ impl<'a> AstWalker<'a> for CallResolver<'_, '_> {
     }
 
     fn walk_statement(&mut self, ast: &'a Statement) {
-        match ast {
-            Statement::Assign(tgts, e) => match e {
+        if let Statement::Assign(tgts, e) = ast {
+            match e {
                 AssignRhs::Call(ident, args) => {
                     self.resolve(ident, |data| {
-                        matches!(data.kind, MemberKind::DomainFunction | MemberKind::Function | MemberKind::Method) &&
-                            data.sig.unwrap().args.is_none_or(|params| params == args.len()) &&
-                            data.sig.unwrap().rets == tgts.len()
+                        matches!(
+                            data.kind,
+                            MemberKind::DomainFunction | MemberKind::Function | MemberKind::Method
+                        ) && data
+                            .sig
+                            .unwrap()
+                            .args
+                            .is_none_or(|params| params == args.len())
+                            && data.sig.unwrap().rets == tgts.len()
                     });
                 }
                 _ => assert_eq!(tgts.len(), 1),
             }
-            _ => (),
         }
         ast.walk_children(self);
     }
@@ -45,15 +54,25 @@ impl<'a> AstWalker<'a> for CallResolver<'_, '_> {
         match ast {
             ExpKind::FuncApp(ident, args) => {
                 self.resolve(ident, |data| {
-                    matches!(data.kind, MemberKind::DomainFunction | MemberKind::Function | MemberKind::Predicate) &&
-                        data.sig.unwrap().args.is_none_or(|params| params == args.len())
+                    matches!(
+                        data.kind,
+                        MemberKind::DomainFunction | MemberKind::Function | MemberKind::Predicate
+                    ) && data
+                        .sig
+                        .unwrap()
+                        .args
+                        .is_none_or(|params| params == args.len())
                 });
             }
             ExpKind::Field(_, ident) => {
                 self.resolve(ident, |data| matches!(data.kind, MemberKind::Field));
             }
             ExpKind::HeapUpdate(_, acc, _) if self.is_function() => {
-                assert_eq!(*acc.perm, ExpKind::Const(ConstKind::write()), "specifying perm amount in function heap updates not allowed");
+                assert_eq!(
+                    *acc.perm,
+                    ExpKind::Const(ConstKind::write()),
+                    "specifying perm amount in function heap updates not allowed"
+                );
             }
             _ => (),
         }
@@ -62,11 +81,12 @@ impl<'a> AstWalker<'a> for CallResolver<'_, '_> {
 
     fn walk_acc_exp(&mut self, ast: &'a AccExp) {
         match &*ast.acc.loc {
-            ExpKind::FuncApp(ident, _) =>
-                self.resolve(ident, |data| matches!(data.kind, MemberKind::Predicate)),
+            ExpKind::FuncApp(ident, _) => {
+                self.resolve(ident, |data| matches!(data.kind, MemberKind::Predicate))
+            }
             ExpKind::Field(..) => (),
             // TODO: wands
-            _ => panic!("acc location must be a predicate or field")
+            _ => panic!("acc location must be a predicate or field"),
         }
         ast.walk_children(self);
     }
@@ -81,13 +101,19 @@ impl<'a> AstWalker<'a> for CallResolver<'_, '_> {
     }
 }
 
-impl<'tcx> CallResolver<'_, 'tcx> {
+impl CallResolver<'_, '_> {
     fn resolve(&mut self, ident: &Ident, p: impl FnOnce(MemberData) -> bool) {
         let i = self.tcx.interner.mk_symbol(ident);
         let i = self.tcx.global_ref(i);
         if i.is_none_or(|id| !p(self.tcx.data(id))) {
-            panic!("unresolved `{:?}`: {:#?}", ident, i.map(|id| self.tcx.data(id)));
-            self.errors.push(ResolveError { unresolved: ident.clone() });
+            eprintln!(
+                "error: unresolved `{:?}`: {:#?}",
+                ident,
+                i.map(|id| self.tcx.data(id))
+            );
+            self.errors.push(ResolveError {
+                unresolved: ident.clone(),
+            });
         }
     }
 
