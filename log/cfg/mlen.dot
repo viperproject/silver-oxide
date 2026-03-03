@@ -1,0 +1,12 @@
+digraph {
+    0 [ label = "4. bb0 🚪" shape=box color="black" style="solid"]
+    1 [ label = "3. bb1 📝  x1\l|| true" shape=box color="blue" style="solid"]
+    2 [ label = "1. bb2 ⏳  while\l🔄  head of bb2" shape=box color="forestgreen" style="solid"]
+    3 [ label = "2. bb3 📝  x3\l|| bb2.T\l🔄  in bb2" shape=box color="orange" style="dashed"]
+    4 [ label = "0. bb4 📝  x1\l|| true" shape=box color="black" style="solid"]
+    1 -> 0 [ style="solid" color="black" constraint="true"]
+    2 -> 3 [ style="solid" color="black" constraint="true"]
+    2 -> 1 [ style="solid" color="black" constraint="true"]
+    3 -> 2 [ style="dashed" color="black" constraint="false"]
+    4 -> 2 [ style="solid" color="black" constraint="true"]
+}

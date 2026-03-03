@@ -1,0 +1,5 @@
+digraph {
+    0 [ label = "1. bb0 🚪" shape=box color="black" style="solid"]
+    1 [ label = "0. bb1 📝  x1\l|| true" shape=box color="black" style="solid"]
+    1 -> 0 [ style="solid" color="black" constraint="true"]
+}

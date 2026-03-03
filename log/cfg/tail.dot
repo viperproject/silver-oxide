@@ -1,0 +1,14 @@
+digraph {
+    0 [ label = "5. bb0 🚪" shape=box color="black" style="solid"]
+    1 [ label = "4. bb1 📝  x0\l|| true" shape=box color="black" style="solid"]
+    2 [ label = "3. bb2 📝  x4\l|| bb4.F" shape=box color="black" style="solid"]
+    3 [ label = "2. bb3 📝  x2\l|| bb4.T" shape=box color="black" style="solid"]
+    4 [ label = "1. bb4 🌳  if" shape=box color="black" style="solid"]
+    5 [ label = "0. bb5 📝  x1\l|| true" shape=box color="black" style="solid"]
+    1 -> 0 [ style="solid" color="black" constraint="true"]
+    2 -> 1 [ style="solid" color="black" constraint="true"]
+    3 -> 1 [ style="solid" color="black" constraint="true"]
+    4 -> 3 [ style="solid" color="black" constraint="true"]
+    4 -> 2 [ style="solid" color="black" constraint="true"]
+    5 -> 4 [ style="solid" color="black" constraint="true"]
+}

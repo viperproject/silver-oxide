@@ -1,6 +1,6 @@
 use num::{BigInt, BigRational};
 
-use crate::{parse::ast::*, program::LocalDefId, TiVec};
+use crate::{parse::ast::*, TiVec};
 
 macro_rules! walk_children {
     ($name:ident, $l:lifetime, $ty:ident) => {
@@ -61,6 +61,7 @@ pub trait AstWalker<'a>: Sized {
     walk_children!(walk_method, 'a, Method);
     walk_children!(walk_adt, 'a, Adt);
     walk_children!(walk_variant, 'a, Variant);
+    walk_children!(walk_adt_constructor, 'a, AdtConstructor);
     // walk_children!(walk_domain_element, 'a, DomainElement);
 
     walk_children!(walk_string, 'a, String);
@@ -70,7 +71,7 @@ pub trait AstWalker<'a>: Sized {
     walk_children!(walk_usize, 'a, usize);
 
     #[allow(unused_variables)]
-    fn visit_local_def_id(&mut self, did: LocalDefId) {}
+    fn visit_member_id(&mut self, did: MemberId) {}
 }
 
 macro_rules! walk_mut_children {
@@ -131,6 +132,7 @@ pub trait AstWalkerMut<'a>: Sized {
     walk_mut_children!(walk_mut_method, 'a, Method);
     walk_mut_children!(walk_mut_adt, 'a, Adt);
     walk_mut_children!(walk_mut_variant, 'a, Variant);
+    walk_mut_children!(walk_mut_adt_constructor, 'a, AdtConstructor);
     // walk_mut_children!(walk_mut_domain_element, 'a, DomainElement);
 
     walk_mut_children!(walk_mut_string, 'a, String);
@@ -140,7 +142,7 @@ pub trait AstWalkerMut<'a>: Sized {
     walk_mut_children!(walk_mut_usize, 'a, usize);
 
     #[allow(unused_variables)]
-    fn visit_local_def_id(&mut self, did: LocalDefId) {}
+    fn visit_member_id(&mut self, did: MemberId) {}
 }
 
 pub trait AstWalkable {
@@ -249,7 +251,8 @@ walk_enum!(
     Function(f),
     Predicate(p),
     Method(m),
-    Adt(a)
+    Adt(a),
+    AdtConstructor(c)
 );
 walk_struct!(
     DomainElement,
@@ -321,10 +324,14 @@ walk_enum!(
     FuncApp(i, args),
     Ident(i),
     BinOp(op, l, r),
+    MagicWand(l, r),
     Ternary(c, t, e),
     Field(e, i),
     Index(e, op),
-    UnOp(op, e)
+    UnOp(op, e),
+    AdtDestructor(e, i),
+    AdtConstructor(i, args),
+    AdtDiscriminator(e, i)
 );
 walk_enum!(
     ConstKind,
@@ -389,7 +396,6 @@ walk_enum!(
     Intersection,
     Subset,
     Concat,
-    MagicWand,
     Range,
     InhaleExhale
 );
@@ -537,8 +543,9 @@ walk_struct!(
     contract,
     body
 );
-walk_struct!(Adt, walk_adt, walk_mut_adt, name, args, variants, derives);
+walk_struct!(Adt, walk_adt, walk_mut_adt, name, params, variants, derives);
 walk_struct!(Variant, walk_variant, walk_mut_variant, name, fields);
+walk_struct!(AdtConstructor, walk_adt_constructor, walk_mut_adt_constructor, signature);
 
 // impl<T: AstWalkable> AstWalkable for Box<T> {
 //     fn walk<'a>(&'a self, walker: &mut impl AstWalker<'a>) {
@@ -670,4 +677,4 @@ macro_rules! visit {
     };
 }
 
-visit!(LocalDefId, visit_local_def_id);
+visit!(MemberId, visit_member_id);

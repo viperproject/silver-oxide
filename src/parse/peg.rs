@@ -176,7 +176,7 @@ peg::parser! {
             --
             x:@ (_ "==>" _) y:(@) { ExpKind::BinOp(BinOp::Implies, Box::new(x), Box::new(y)) }
             --
-            x:@ (_ "--*" _) y:(@) { ExpKind::BinOp(BinOp::MagicWand, Box::new(x), Box::new(y)) }
+            x:@ (_ "--*" _) y:(@) { ExpKind::MagicWand(HeapExp::new(Box::new(x)), HeapExp::new(Box::new(y))) }
             --
             x:@ (_ "||" _) y:(@) { ExpKind::BinOp(BinOp::Or, Box::new(x), Box::new(y)) }
             --
@@ -204,17 +204,18 @@ peg::parser! {
             x:(@) (_ "%" _) y:@ { ExpKind::BinOp(BinOp::Mod, Box::new(x), Box::new(y)) }
             x:(@) (_ "\\" _) y:@ { ExpKind::BinOp(BinOp::IntDiv, Box::new(x), Box::new(y)) }
             --
-            x:@ i:(_ "." i:ident() {i}) { ExpKind::Field(Box::new(x), i) }
-            x:@ _ "[" _ s:seq_op() _ "]" _  { ExpKind::Index(Box::new(x), s) }
             "-" _ x:@ { ExpKind::UnOp(UnOp::Neg, Box::new(x)) }
             "!" _ x:@ { ExpKind::UnOp(UnOp::Not, Box::new(x)) }
             --
-            a:annotated(<atom()>) {a}
+            x:@ i:(_ "." i:ident() {i}) { ExpKind::Field(Box::new(x), i) }
+            x:@ _ "[" _ s:seq_op() _ "]" _  { ExpKind::Index(Box::new(x), s) }
+            --
+            a:atom() {a}
         }
 
         rule exp_kind() -> ExpKind = annotated(<full_exp()>)
 
-        rule exp() -> Exp = e:exp_kind() { Box::new(e) }
+        pub(super) rule exp() -> Exp = e:exp_kind() { Box::new(e) }
 
         rule suffix_exp() -> ExpKind = a:atom() _ suff:(("." id:ident() { Ok(id) } / "[" _ e:exp() _ "]" { Err(e) }) ** _)
             {
@@ -326,7 +327,6 @@ peg::parser! {
             / f:function() { Declaration::Function(f) }
             / p:predicate() { Declaration::Predicate(p) }
             / m:method() { Declaration::Method(m) }
-            / a:adt() { Declaration::Adt(a) }
 
         rule import() -> Import = "import" _ r:("<" _ r:relative_path() _ ">" { (r, false) } / "\"" _ r:relative_path() _ "\"" { (r, true) })
             { Import { path: r.0, local: r.1 } }
@@ -335,16 +335,18 @@ peg::parser! {
             { Define { name: nm, args: ids.unwrap_or_default(), body } }
 
         rule multi_decl() -> Vec<Declaration> =
-            domain() / field()
+            domain() / field() / adt()
+
+        rule domain_params() -> Vec<IdnDecl> = params:(bracketed(<idndecl()>))? { params.unwrap_or_default() }
 
         rule domain() -> Vec<Declaration> =
             "domain" _
             name:idndecl() _
-            params:(bracketed(<idndecl()>))? _
+            params:domain_params() _
             interp:domain_interpretation()? _
             "{" _ elements:(annotated(<domain_element()>) ** _) _ "}"
         {
-            [Declaration::Domain(Domain { name: name.clone(), params: params.unwrap_or_default(), interpretation: interp.unwrap_or_default() })].into_iter().chain(
+            [Declaration::Domain(Domain { name: name.clone(), params, interpretation: interp.unwrap_or_default() })].into_iter().chain(
                 elements.into_iter().map(|kind| Declaration::DomainElement(DomainElement { domain: name.0.clone(), kind }))
             ).collect()
         }
@@ -381,16 +383,18 @@ peg::parser! {
         rule method() -> Method = "method" _ id:idndecl() _ args:tupled(<decl_named_formal_arg()>) _ ret:formal_returns()? _ cont:contract() _ body:block()?
             { Method { signature: Signature { name: id, args, ret: ret.unwrap_or_default() }, contract: cont, body } }
 
-        rule adt() -> Adt = "adt" _ ty:type_constr() _ vars:adt_variants() _ derives:derives()?
+        rule adt() -> Vec<Declaration> = "adt" _ name:idndecl() _ params:domain_params() _ vars:adt_variants() _ derives:derives()?
             {
-                let Type::Domain(name, args) = ty else { unreachable!() };
-                Adt { name: IdnDecl(name), args, variants: vars , derives: derives.map(|s| vec![s]).unwrap_or_default()  }
+                let variants = vars.iter().map(|v| Variant { name: v.signature.name.clone(), fields: v.signature.args.clone() }).collect();
+                let adt = Adt { name: name.clone(), params, variants, derives: derives.map(|s| vec![s]).unwrap_or_default() };
+                let identity = adt.identity();
+                [Declaration::Adt(adt)].into_iter().chain(vars.into_iter().map(|mut v| { v.signature.ret = vec![ArgOrType::Type(identity.clone())]; Declaration::AdtConstructor(v) })).collect()
             }
 
-        rule adt_variant() -> Variant = name:idndecl() _ fields:tupled(<formal_arg()>) _
-                { Variant { name, fields } }
+        rule adt_variant() -> AdtConstructor = name:idndecl() _ fields:tupled(<formal_arg()>) _
+                { AdtConstructor { signature: Signature { name, args: fields.into_iter().map(ArgOrType::Arg).collect(), ret: vec![] } } }
 
-        rule adt_variants() -> Vec<Variant> = "{" _ vars:adt_variant()* _ "}" { vars }
+        rule adt_variants() -> Vec<AdtConstructor> = "{" _ vars:adt_variant()* _ "}" { vars }
 
         rule derives() -> String = "derives" _ "{" _ str:$((!"}" [_])*) _ "}" { str.to_string() }
 
@@ -415,4 +419,10 @@ peg::parser! {
 
 
     }
+}
+
+#[test]
+fn precedence_test() {
+    let exp = silver_parser::exp("!r.b").unwrap();
+    assert_eq!(exp, Box::new(ExpKind::UnOp(UnOp::Not, Box::new(ExpKind::Field(Box::new(ExpKind::Ident(Ident("r".to_string()))), Ident("b".to_string()))))));
 }

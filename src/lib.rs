@@ -1,7 +1,11 @@
-use program::{ProcessError, TyCtxt};
-
 pub mod parse;
-pub mod program;
+pub mod translate;
+mod util;
+pub mod vmir;
+
+use translate::ProcessError;
+pub use util::*;
+use vmir::ty::TyCtxt;
 
 pub struct Silver<'tcx> {
     pub program: parse::Program,
@@ -36,8 +40,3 @@ impl From<ProcessError> for SilverError {
         SilverError::ProcessError(e)
     }
 }
-
-type NonMaxU32 = nonmax::NonMaxU32;
-type TiVec<K, V> = typed_index_collections::TiVec<K, V>;
-type HashMap<K, V> = indexmap::IndexMap<K, V>;
-type HashSet<K> = indexmap::IndexSet<K>;

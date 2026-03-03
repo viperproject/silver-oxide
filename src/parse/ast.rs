@@ -1,7 +1,9 @@
-use crate::{program::LocalDefId, TiVec};
+use crate::{idx, TiVec};
+
+idx!(MemberId, "id{}");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Program(pub(super) TiVec<LocalDefId, Declaration>);
+pub struct Program(pub(super) TiVec<MemberId, Declaration>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PrePostDec {
@@ -40,6 +42,7 @@ pub enum Declaration {
     Predicate(Predicate),
     Method(Method),
     Adt(Adt),
+    AdtConstructor(AdtConstructor),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -92,6 +95,13 @@ pub enum ArgOrType {
 }
 
 impl ArgOrType {
+    pub fn idn(&self) -> Option<&IdnDecl> {
+        match self {
+            ArgOrType::Arg(id) => Some(&id.idn),
+            ArgOrType::Type(_) => None,
+        }
+    }
+
     pub fn ty(&self) -> &Type {
         match self {
             ArgOrType::Arg(id) => &id.ty,
@@ -147,6 +157,8 @@ pub enum ExpKind {
     Ident(Ident),
     /// e1 op e2
     BinOp(BinOp, Exp, Exp),
+    /// e1 --* e2
+    MagicWand(HeapExp, HeapExp),
     /// c ? e1 : e2
     Ternary(Exp, Exp, Exp),
     /// e.f
@@ -156,6 +168,12 @@ pub enum ExpKind {
     Index(Exp, IndexOp),
     /// op e
     UnOp(UnOp, Exp),
+    /// adt.field
+    AdtDestructor(Exp, Ident),
+    /// Cons(...)
+    AdtConstructor(Ident, Vec<Exp>),
+    /// adt.isCons
+    AdtDiscriminator(Exp, Ident),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -169,7 +187,7 @@ pub enum ConstKind {
     Heap(ConstHeapKind),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ConstHeapKind {
     /// The heap initialised from the precondition
     Old,
@@ -226,7 +244,6 @@ pub enum BinOp {
     Intersection,
     Subset,
     Concat,
-    MagicWand,
     Range,
     InhaleExhale,
 }
@@ -298,7 +315,7 @@ pub enum IndexOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Invariant(pub HeapExp);
+pub struct Invariant(pub Option<HeapExp>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum WhileSpec {
@@ -331,8 +348,8 @@ pub struct Function {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Contract {
-    pub precondition: HeapExp,
-    pub postcondition: HeapExp,
+    pub precondition: Option<HeapExp>,
+    pub postcondition: Option<HeapExp>,
     pub decreases: Vec<Decreases>,
 }
 
@@ -375,13 +392,19 @@ pub struct Method {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Adt {
     pub name: IdnDecl,
-    pub args: Vec<Type>,
+    pub params: Vec<IdnDecl>,
     pub variants: Vec<Variant>,
     pub derives: Vec<String>,
 }
 
+/// Duplicated data with `AdtConstructor`
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Variant {
     pub name: IdnDecl,
-    pub fields: Vec<IdnDeclTyped>,
+    pub fields: Vec<ArgOrType>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AdtConstructor {
+    pub signature: Signature,
 }

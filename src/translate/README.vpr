@@ -1,0 +1,292 @@
+// Viper MIR
+
+// ---
+// field translation
+// ---
+
+field f_: Int
+// ->
+// function f_(Ref): &Int
+
+
+
+// ---
+// predicate translation
+// ---
+
+predicate pr_(x1: Ref, x2: Ref, i: Int) {
+     acc(x1.f_, 1/2)
+  && (x1 != x2 ==> x1.f_ == i && acc(x2.f_))
+  && x2.f_ != i
+}
+// ->
+// resource pr_body(x1: Ref, x2: Ref, i: Int) { // defines `*pr_body(x1, x2, i)` as `(*f_(x1), x1 != x2 ? *f_(x1) == i ? *f_(x2))`
+//      acc(f_(x1), 1 / 2)
+//   && (x1 != x2 ? *f_(x1) == i && acc(f_(x2), write) : true)
+//   && *f_(x2) != i
+// }
+// function pr_(x1: Ref, x2: Ref, i: Int): &pr_body
+// ghost method pr_fold(x1: Ref, x2: Ref, i: Int)
+//     requires  acc(pr_body(x1, x2, i), write)
+//     ensures   acc(pr_(x1, x2, i), write)
+//     preserves *pr_(x1, x2, i) == old(*pr_body(x1, x2, i))
+
+
+
+// ---
+// function translation
+// ---
+
+function foo(x: Ref, y: Ref, z: Int): Int
+  requires pr_(x, y, z)
+  ensures  result != z
+{
+  unfolding acc(pr_(x, y, z)) in x.f_ == z ? y.f_ : x.f_
+}
+// ->
+// function foo$post(x: Ref, y: Ref, z: Int, result: Int): Bool
+//     requires acc(pr_(x, y, z), wildcard)
+// {
+//     result != z
+// }
+// function foo(x: Ref, y: Ref, z: Int): Int
+//     requires acc(pr_(x, y, z), wildcard)
+//     ensures  foo$post(x, y, z, result)
+// {
+//     uncalling acc(pr_fold(x, y, z), wildcard) in *f_(x) == z ? *f_(y) : *f_(x)
+// }
+
+
+
+// ---
+// recursive function translation
+// ---
+
+field n_: Ref
+predicate ll_(x: Ref) {
+  x != null ==> acc(x.f_) && acc(x.n_) && acc(ll_(x.n_))
+}
+function length(x: Ref): Int
+  requires ll_(x) && x != null
+  ensures  result > 0
+{
+  1 + unfolding ll_(x) in x.n_ == null ? 0 : length(x.n_)
+}
+// ->
+// function n_(x: Ref): &Ref
+// resource ll_body(x: Ref) { // defines `*ll_body(x)` as `(x != null ? *f_(x), x != null ? *n_(x), x != null ? *ll_(*n_(x)))`
+//     x != null ? acc(f_(x), write) ** acc(n_(x), write) ** acc(ll_(*n_(x)), write) : true
+// }
+// function ll_(x: Ref): &ll_body
+// ghost method ll_fold(x: Ref)
+//     requires  acc(ll_body(x), write)
+//     ensures   acc(ll_(x), write)
+//     preserves *ll_(x) == old(*ll_body(x))
+//
+// resource length_pre(x: Ref) {
+//     acc(ll_(x), write) ** x != null
+// }
+// function length_post(x: Ref, result: Int): Bool
+//     requires acc(length_pre(x), wildcard)
+// {
+//     result > 0
+// }
+// function length$lim(x: Ref): Int
+//     requires acc(length_pre(x), wildcard)
+//     ensures  length_post(x, result)
+//     axiom { ll_(x) } result == length(x) // a postcondition which is assumed only under the additional trigger
+// function length(x: Ref): Int
+//     requires acc(length_pre(x), wildcard)
+//     ensures  length_post(x, result)
+// {
+//     1 + uncalling acc(ll_fold(x), wildcard) in *n_(x) == null ? 0 : length$lim(*n_(x))
+// }
+
+
+
+// ---
+// loop translation
+// ---
+
+method mlen(x: Ref, m: Int) returns (i: Int)
+  requires acc(x.n_) && ll_(x.n_) && x.n_ != null
+  ensures  i == old(length(x.n_)) * m
+{
+  i := 0
+  while (x.n_ != null)
+    invariant acc(x.n_) && ll_(x.n_)
+    invariant i == m * (old(length(x.n_)) - (x.n_ == null ? 0 : length(x.n_)))
+  {
+    i := i + m
+    unfold ll_(x.n_)
+    x.n_ := x.n_.n_
+  }
+  exhale x.n_ == null && acc(x.n_) && x.n_ == null
+}
+// ->
+// predicate mlen_pre(x: Ref, m: Int) {
+//   acc(n_(x), write) && acc(ll_(*n_(x)), write) && *n_(x) != null
+// }
+// method mlen(x: Ref, m: Int) returns (i: Int)
+//   requires mlen_pre(x, m)
+//   ensures  i == old(length(x)) * m
+// {
+//   i := 0
+//   resource mlen_inv(i: Int) {
+//     acc(n_(x), write) && acc(ll_(*n_(x)), write) &&
+//       i == m * (old(length(*n_(x))) -
+//         (*n_(x) == null ? 0 : length(*n_(x))))
+//   }
+//   method mlen_rec(i_in: Int) returns (i_out: Int)
+//     requires mlen_inv(i_in)
+//     ensures  mlen_inv(i_out)
+//   {    // can also wrap the body in an `if`
+//     assume *n_(x) != null
+//     i_out := i_in + m
+//     uncall acc(ll_fold(*n_(x)))
+//     *n_(x) := *n_(*n_(x))
+//     i_out := mlen_rec(i_out)
+//   }
+//   i := mlen_rec(x, m, i)
+//   assume *n_(x) == null
+
+//   resource mlen_exhale(x: Ref) {
+//     *n_(x) == null && acc(n_(x), write) && *n_(x) == null
+//   }
+//   uncall acc(inhale(mlen_exhale(x)))
+// }
+
+
+
+// ---
+// magic wands
+// ---
+// conceptually `a --* b` represents `∃ c. (∃ ghost. requires b ensures a ** c) && c`
+// the pure (freely duplicable) `∃ ghost` lets us "apply" and go `a ** c -> b` but also "unapply" and go `b -> a ** c`
+// ---
+
+// method head(x: Ref)
+//     requires ll_(x) && x != null
+//     ensures  acc(x.f_) && (acc(x.f_) --* ll_(x))
+//     ensures  let x_f == (x.f_) in applying (acc(x.f_) --* ll_(x)) in unfolding ll_(x) in x_f == x.f_
+// {
+//     unfold ll_(x)
+//     package acc(x.f_) --* ll_(x) {
+//         fold ll_(x)
+//     }
+// }
+
+method tail(x: Ref) returns (t: Ref)
+  requires ll_(x) && x != null
+  ensures  acc(t.n_) && ll_(t.n_)
+  ensures  acc(t.n_) && ll_(t.n_) --* ll_(x)
+{
+  // inhale acc(x.f_, write) && perm(x.f_) < x.f_/1
+  unfold ll_(x)
+  if (x.n_ == null) {
+    t := x
+    package acc(t.n_) && ll_(t.n_) --* ll_(x) {
+      fold ll_(x)
+    }
+  } else {
+    var x_n: Ref := x.n_
+    t := tail(x_n)
+    package acc(t.n_) && ll_(t.n_) --* ll_(x) {
+      apply acc(t.n_) && ll_(t.n_) --* ll_(x_n)
+      fold ll_(x)
+    }
+  }
+}
+// ->
+// resource tail$pre = length_pre
+// resource tail$post(x: Ref, t: Ref)
+//     requires acc(tail$pre(x), write)
+// {
+//     acc(n_(t), write) ** acc(ll_(*n_(t)), write) ** acc(
+//         acc(n_(t), write) ** acc(ll_(*n_(t)), write) --* acc(ll_(x), write)
+//     , write)
+// }
+// method tail(x: Ref) returns (t: Ref)
+//     requires acc(tail$pre(x), write)
+//     ensures  acc(tail$post(x, t), write)
+// {
+//     uncall acc(ll_fold(x), write)
+//     if (*n_(x) == null) {
+//         t := x
+//         package ghost
+//             requires acc(ll_(x), write)
+//             ensures  acc(n_(t), write) ** acc(ll_(*n_(t)), write) ** ?
+//         {
+//             uncall acc(ll_fold(x), write)
+//             // finds that `?` is `acc(f_(x), write)`
+//         }
+//     } else {
+//         var x_n: Ref := *n_(x)
+//         t := tail(x_n)
+//         package ghost
+//             requires acc(ll_(x), write)
+//             ensures  acc(n_(t), write) ** acc(ll_(*n_(t)), write) ** ?
+//         {
+//             uncall acc(ll_fold(x), write)
+//             // represents a "cached package", i.e. we already proved the following package and so we can call this ghost again
+//             // package ghost
+//             //     requires acc(ll_(x_n), write)
+//             //     ensures acc(n_(t), write) ** acc(ll_(*n_(t)), write) ** (acc(n_(t), write) ** acc(ll_(*n_(t)), write) --* acc(ll_(x_n), write))
+//             call acc(n_(t), write) ** acc(ll_(*n_(t)), write) --* acc(ll_(x_n), write) // note: needs to infer that `acc(n_(x)) && *n_(x) == x_n` are part of the footprint
+//             // finds that `?` is `acc(f_(x), write) ** acc(n_(x), write) && *n_(x) == x_n
+//             //     ** (acc(n_(t), write) ** acc(ll_(*n_(t)), write) --* acc(ll_(x_n), write))`
+//         }
+//     }
+// }
+
+
+
+// ---
+// conservative wands
+// ---
+
+predicate nat_(x: Ref) { acc(x.f_) && acc(x.n_) && 0 <= x.f_ }
+method mk_wand(x: Ref)
+  requires acc(x.n_)
+  ensures acc(x.f_) && 42 <= x.f_ --* nat_(x)
+{
+  package acc(x.f_) && 42 <= x.f_ --* nat_(x) {
+    fold nat_(x)
+  }
+}
+// ->
+// {
+//   package method mk_wand_1()
+//     requires* acc(f_(x)) && 42 <= *f_(x) && ?
+//     ensures*  acc(nat_(x))
+//   {
+//     // infers that `acc(n_(x))` is required
+//     call acc(nat_fold(x))
+//   }
+// }
+
+
+// ---
+// quantified permissions
+// ---
+
+method add_list(x: Ref) returns (qp_out: Set[Ref])
+  requires forall r: Ref :: r in qp_in ==> acc(r.n_)
+  // requires acc(x.n_)
+  // ensures forall r: Ref :: r in qp_out ==> acc(r.n_)
+  // ensures qp_out == qp_in union Set(x)
+{
+  // qp_out := qp_in union Set(x)
+  // var curr: Ref := to_add
+  // qp_out := qp_in
+
+  // while (curr != null)
+  //   invariant ll_(curr)
+  //   invariant forall x: Ref :: x in qp_out ==> acc(x.n_)
+  //   invariant qp_in subset qp_out
+  // {
+  //   unfold ll_(curr)
+  //   qp_out := qp_out union Set(curr)
+  //   curr := curr.n_
+  // }
+}

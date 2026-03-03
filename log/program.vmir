@@ -1,0 +1,301 @@
+function nat_(_0: &nat_@body[], _1: ref)
+
+resource nat_@fold_post(_0: ref) {
+  e0: &nat_@body[] := nat_(_0)
+  🆕 acc(e0, write)
+  🏁 true
+}
+
+function ll_(_0: &ll_@body[], _1: ref)
+
+resource ll_@fold_post(_0: ref) {
+  e0: &ll_@body[] := ll_(_0)
+  🆕 acc(e0, write)
+  🏁 true
+}
+
+resource length@pre(_0: ref) {
+  e0: &ll_@body[] := ll_(_1)
+  🆕 acc(e0, wildcard)
+  e1: bool := _1 == null
+  🏁 ! e1
+}
+
+function length@post(_0: bool, _1: ref, _2: length@pre[], _3: int)
+  requires length@pre(_0) {
+  🏁 0 < _2
+}
+
+resource tail@pre(_0: ref) {
+  e0: &ll_@body[] := ll_(_0)
+  🆕 acc(e0, write)
+  e1: bool := _0 == null
+  🏁 ! e1
+}
+
+function n_(_0: &ref, _1: ref)
+
+resource mlen@pre(_0: ref, _1: int) {
+  e0: &ref := n_(_0)
+  🆕 acc(e0, write)
+  e1: ref := *⟦▣⟧ e0
+  e2: &ll_@body[] := ll_(e1)
+  🆕 acc(e2, write)
+  e3: bool := e1 == null
+  🏁 ! e3
+}
+
+resource tail@post(_0: ref, _1: ref)
+  requires tail@pre(_0) {
+  e0: &ref := n_(_1)
+  🆕 acc(e0, write)
+  e1: ref := *⟦▣⟧ e0
+  e2: &ll_@body[] := ll_(e1)
+  🆕 acc(e2, write)
+  🆕 acc(true, write)
+  🏁 true
+}
+
+resource mk_wand@pre(_0: ref) {
+  e0: &ref := n_(_0)
+  🆕 acc(e0, write)
+  🏁 true
+}
+
+resource mk_wand@post(_0: ref)
+  requires mk_wand@pre(_0) {
+  🏁 true
+  🆕 acc(true, write)
+  
+}
+
+method mk_wand(_0: ref)
+  requires mk_wand@pre(_0)
+  ensures mk_wand@post(_0) {
+  [ref, heap]
+if (true) {}
+
+}
+
+function pr_(_0: &pr_@body[], _1: ref, _2: ref, _3: int)
+
+resource foo@pre(_0: ref, _1: ref, _2: int) {
+  e0: &pr_@body[] := pr_(_1, _2, _3)
+  🆕 acc(e0, wildcard)
+  🏁 true
+}
+
+function foo@post(_0: bool, _1: ref, _2: ref, _3: int, _4: foo@pre[], _5: int)
+  requires foo@pre(_0, _1, _2) {
+  e0: bool := _4 == _3
+  🏁 ! e0
+}
+
+resource pr_@fold_post(_0: ref, _1: ref, _2: int) {
+  e0: &pr_@body[] := pr_(_0, _1, _2)
+  🆕 acc(e0, write)
+  🏁 true
+}
+
+function f_(_0: &int, _1: ref)
+
+resource ll_@body(_0: ref) {
+  e0: bool := _0 == null
+  e1: bool := ! e0
+  e2: &int := f_(_0)
+  🆕 [e1] ? acc(e2, write)
+  e3: &ref := n_(_0)
+  🆕 [e1] ? acc(e3, write)
+  e4: ref := [e1] ? *⟦▣⟧ e3
+  e5: &ll_@body[] := [e1] ? ll_(e4)
+  🆕 [e1] ? acc(e5, write)
+  🏁 true
+}
+
+function length(_0: int, _1: ref, _2: length@pre[])
+  requires length@pre(_0)
+  ensures length@post(_1, _2, _0) {
+  e0: heap := uncall acc⟦□⟧(ll_@fold(_1), wildcard)
+  e1: &ref := n_(_1)
+  e2: ref := *⟦e0⟧ e1
+  e3: bool := e2 == null
+  e4: length@pre[] := [!e3] ? *length@pre(e2)
+  e5: int := [!e3] ? length(e2, e4)
+  e6: int := e3 ? 0 : e5
+  🏁 1 + e6
+}
+
+resource mlen@post(_0: ref, _1: int, _2: int)
+  requires mlen@pre(_0, _1) {
+  e0: &ref := n_(_0)
+  e1: ref := *⟦□⟧ e0
+  e2: length@pre[] := *length@pre(e1)
+  e3: int := length(e1, e2)
+  e4: int := e3 * _1
+  🏁 _2 == e4
+}
+
+ghost method ll_@fold(_0: ref)
+  requires ll_@body(_1)
+  ensures ll_@fold_post(_1)
+
+method mlen(_0: ref, _1: int, _2: int)
+  requires mlen@pre(_0, _1)
+  ensures mlen@post(_0, _1, _2) {
+  [ref, int, int, heap, heap]
+if (true) {
+  _2 := 🏁 0
+  Exhale ⟦_3⟧
+    e0: &ref := n_(_0)
+    🆕 acc(e0, write)
+    e1: ref := *⟦_3⟧ e0
+    e2: &ll_@body[] := ll_(e1)
+    🆕 acc(e2, write)
+    e3: ref := *⟦□⟧ e0
+    e4: length@pre[] := *length@pre(e3)
+    e5: int := length(e3, e4)
+    e6: bool := e1 == null
+    e7: length@pre[] := [!e6] ? *length@pre(e1)
+    e8: int := [!e6] ? length(e1, e7)
+    e9: int := e6 ? 0 : e8
+    e10: int := e5 - e9
+    e11: int := _1 * e10
+    🏁 _2 == e11
+  _4 := 🏁 _3
+  _3 := 🏁 t0
+  _2 := 🏁 t1
+  Inhale ⟦_3⟧
+    e0: &ref := n_(_0)
+    🆕 acc(e0, write)
+    e1: ref := *⟦_3⟧ e0
+    e2: &ll_@body[] := ll_(e1)
+    🆕 acc(e2, write)
+    e3: ref := *⟦□⟧ e0
+    e4: length@pre[] := *length@pre(e3)
+    e5: int := length(e3, e4)
+    e6: bool := e1 == null
+    e7: length@pre[] := [!e6] ? *length@pre(e1)
+    e8: int := [!e6] ? length(e1, e7)
+    e9: int := e6 ? 0 : e8
+    e10: int := e5 - e9
+    e11: int := _1 * e10
+    🏁 _2 == e11
+  t2 :=
+    e0: &ref := n_(_0)
+    e1: ref := *⟦_3⟧ e0
+    e2: bool := e1 == null
+    🏁 ! e2
+}
+if (t2) {
+  _2 := 🏁 _2 + _1
+  t0 :=
+    e0: &ref := n_(_0)
+    🏁 *⟦_3⟧ e0
+  uncall acc⟦_3⟧(m1(t0), write)
+  t1 := 🏁 n_(_0)
+  t2 :=
+    e0: &ref := n_(_0)
+    e1: ref := *⟦_3⟧ e0
+    e2: &ref := n_(e1)
+    🏁 *⟦_3⟧ e2
+  *⟦_3⟧ t1 := t2
+  Exhale ⟦_3⟧
+    e0: &ref := n_(_0)
+    🆕 acc(e0, write)
+    e1: ref := *⟦_3⟧ e0
+    e2: &ll_@body[] := ll_(e1)
+    🆕 acc(e2, write)
+    e3: ref := *⟦□⟧ e0
+    e4: length@pre[] := *length@pre(e3)
+    e5: int := length(e3, e4)
+    e6: bool := e1 == null
+    e7: length@pre[] := [!e6] ? *length@pre(e1)
+    e8: int := [!e6] ? length(e1, e7)
+    e9: int := e6 ? 0 : e8
+    e10: int := e5 - e9
+    e11: int := _1 * e10
+    🏁 _2 == e11
+  Inhale ⟦_3⟧
+    🏁 false
+}
+if (true) {
+  ⟦_3⟧ += ⟦_4⟧
+  Exhale ⟦_3⟧
+    e0: &ref := n_(_0)
+    e1: ref := *⟦_3⟧ e0
+    e2: bool := e1 == null
+    🆕 [e2] ? acc(e0, write)
+    🏁 e2 ? e2 : false
+}
+
+}
+
+method tail(_0: ref, _1: ref)
+  requires tail@pre(_0)
+  ensures tail@post(_0, _1) {
+  [ref, ref, heap, ref]
+if (true) {
+  uncall acc⟦_2⟧(m1(_0), write)
+  t0 :=
+    e0: &ref := n_(_0)
+    e1: ref := *⟦_2⟧ e0
+    🏁 e1 == null
+}
+if (t0) {
+  _1 := 🏁 _0
+}
+if (!t0) {
+  _3 :=
+    e0: &ref := n_(_0)
+    🏁 *⟦_2⟧ e0
+  _1 := m3(_3, _2)
+}
+if (true) {}
+
+}
+
+resource nat_@body(_0: ref) {
+  e0: &int := f_(_0)
+  🆕 acc(e0, write)
+  e1: &ref := n_(_0)
+  🆕 acc(e1, write)
+  e2: int := *⟦▣⟧ e0
+  🏁 0 <= e2
+}
+
+ghost method nat_@fold(_0: ref)
+  requires nat_@body(_1)
+  ensures nat_@fold_post(_1)
+
+resource pr_@body(_0: ref, _1: ref, _2: int) {
+  e0: &int := f_(_0)
+  🆕 acc(e0, 1 / 2)
+  e1: bool := _0 == _1
+  e2: bool := ! e1
+  e3: int := [e2] ? *⟦▣⟧ e0
+  e4: bool := [e2] ? e3 == _2
+  e5: &int := f_(_1)
+  🆕 [e2, e4] ? acc(e5, write)
+  e6: bool := e2 ? e4 : true
+  e7: int := [e6] ? *⟦▣⟧ e5
+  e8: bool := [e6] ? e7 == _2
+  e9: bool := [e6] ? ! e8
+  🏁 e6 ? e9 : false
+}
+
+function foo(_0: int, _1: ref, _2: ref, _3: int, _4: foo@pre[])
+  requires foo@pre(_0, _1, _2)
+  ensures foo@post(_1, _2, _3, _4, _0) {
+  e0: heap := uncall acc⟦□⟧(pr_@fold(_1, _2, _3), wildcard)
+  e1: &int := f_(_1)
+  e2: int := *⟦e0⟧ e1
+  e3: bool := e2 == _3
+  e4: &int := f_(_2)
+  e5: int := [e3] ? *⟦e0⟧ e4
+  🏁 e3 ? e5 : e2
+}
+
+ghost method pr_@fold(_0: ref, _1: ref, _2: int)
+  requires pr_@body(_1, _2, _3)
+  ensures pr_@fold_post(_1, _2, _3)
+
