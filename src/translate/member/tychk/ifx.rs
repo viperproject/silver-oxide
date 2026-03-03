@@ -37,7 +37,7 @@ struct TypeCheckerInner<'tcx> {
 impl<'tcx> TypeCheckerInner<'tcx> {
     fn any_ty(&mut self, tcx: &TranslationCtxt<'_, 'tcx>) -> Ty<'tcx> {
         let index = self.infer_tys.push_and_get_key(TypeInfer::new(None));
-        println!("[A] mk {index:?}");
+        // println!("[A] mk {index:?}");
         tcx.tcx.interner.mk_ty_from_kind(TyKind::Param(ParamTy {
             name: IFX_NAME,
             index: usize::from(index) as u32,
@@ -501,7 +501,7 @@ impl<'tcx> TypeFolder<'tcx> for ParamTypeResolver<'_, 'tcx> {
                 Resolved(ty) => return Some(*ty),
             };
             let ty = self.fold_ty(ty);
-            println!("- [R] {:?} -> {}", idx, ty);
+            // println!("- [R] {:?} -> {}", idx, ty);
             self.infcx.infer_tys[idx].state = Resolved(ty);
             Some(ty)
         } else {

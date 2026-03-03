@@ -47,7 +47,7 @@ impl<'tcx> TranslationCtxt<'_, 'tcx> {
             })
             .collect();
 
-        eprintln!("translating exp {h:?}");
+        // eprintln!("translating exp {h:?}");
         let pure = et.translate_final(&h.exp, Some(self.tcx.types.bool_));
         ResourceExp {
             resources,

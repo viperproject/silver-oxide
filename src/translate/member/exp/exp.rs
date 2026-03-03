@@ -187,7 +187,7 @@ impl<'a, 'tcx> ExpTranslator<'a, '_, 'tcx> {
         tys: impl Into<ExpectedTys<'tcx>>,
     ) -> ExpOperand<'tcx> {
         let ty = self.e.constrained_ty(self.tcx, tys.into());
-        eprintln!("translating exp {exp:?} with expected type {:?}", ty.ty());
+        // eprintln!("translating exp {exp:?} with expected type {:?}", ty.ty());
         self.translate(exp, ty.ty())
     }
 
@@ -509,7 +509,7 @@ impl<'a, 'tcx> ExpTranslator<'a, '_, 'tcx> {
 
     fn mk_use(&mut self, r: ArgRef<'tcx>, cty: Ty<'tcx>) -> ExpOperand<'tcx> {
         let (local, ty) = self.tcx.get_param(r);
-        eprintln!("using param {r:?} with expected type {cty:?} and actual type {ty:?}");
+        // eprintln!("using param {r:?} with expected type {cty:?} and actual type {ty:?}");
         self.e.ty_eq(cty, ty);
         Operand {
             ty,
